@@ -34,7 +34,6 @@ h2 {
     display: flex;
     gap: 20px;
     justify-content: center;
-    flex-wrap: wrap;
     margin: 25px 0;
 }
 
