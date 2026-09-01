@@ -62,11 +62,6 @@ h2 {
     text-decoration: none;
 }
 
-.back:hover {
-    text-decoration: underline;
-}
-
-
 .intro {
     margin-bottom: 40px;
 }
@@ -82,12 +77,6 @@ h2 {
     border: 1px solid #f3b6d1;
     border-radius: 10px;
     padding: 22px;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.project:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
 }
 
 .project h3 {
@@ -103,10 +92,5 @@ h2 {
     padding: 8px 14px;
     border-radius: 6px;
     font-size: 14px;
-    text-decoration: none;
-}
-
-.button:hover {
-    background: #ad275a;
     text-decoration: none;
 }
