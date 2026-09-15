@@ -27,6 +27,17 @@ h2 {
     color: #ad5c78;
 }
 
+h3 {
+    font-size: 21px;
+    color: #ad5c78;
+}
+
+p {
+    font-size: 18px;
+    line-height: 1.5;
+    color: #885c7a;
+}
+
 .section {
     margin-bottom: 50px;
 }
@@ -49,10 +60,30 @@ h2 {
 }
 
 .images img {
-    width: 45%;
-    min-width: 300px;
+    width: 100%;
     border-radius: 8px;
     box-shadow: 0 3px 12px rgba(214, 51, 108, 0.25);
+}
+
+.image-container {
+    text-align: center;
+    flex: 1;
+}
+
+.image-container img {
+    width: 100%;
+    min-width: 0;
+}
+
+.translation {
+    margin-top: 8px;
+    font-size: 16px;
+    color: #8b6673;
+}
+
+.photo-stack {
+    width: 45%;
+    margin: 25px auto;
 }
 
 .back {

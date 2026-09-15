@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Project 1 - Colorizing the Prokudin-Gorskii Photo Collection</title>
+    <link rel="stylesheet" href="../style.css">
+</head>
+
+<script>
+    MathJax = {
+        tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']]
+        }
+    };
+    </script>
+    <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<body>
+
+    <div class="container">
+
+        <a class="back" href="../index.html">← Back to Portfolio</a>
+
+        <header>
+            <h1>Colorizing the Prokudin-Gorskii Photo Collection</h1>
+        </header>
+
+        <div class="section">
+            <h2>Introduction</h2>
+            <p>
+                Sergei Prokudin-Gorskii took photos of the Russian Empire using a technique 
+                that recorded three exposures (red, green and blue filters) onto a glass plate. There are digitized copes in greyscale. 
+                This project reconstructs color by splitting the plate into the three channels. Then it aligns the G and R channels
+                to the B channel with translations, and stacking them into a singular RGB image.
+            </p>
+        </div>
+
+        <div class="section">
+            <h2>How Does The Program Do It?</h2>
+            <p>
+                My implementation takes in the glass plate image and then outputs a coor image. First I separate the image into 3 equal parts 
+                by its height for the different channels (R, G, B). Then I take the three images and stack them on top of each other by aligning
+                the G and R channel to the B channel photo. In order to align the images I would search through a window a certain size and scored
+                the alignment of the photos based on certain metrics like L2 or NCC. Before scoring I would crop out a certain cutoff percentage
+                based on the image size (5%), so that the wraparouned pixels from np.roll do not ruin the score. 
+            </p>
+        </div>
+
+        <div class="section">
+            <h2>Alignment Scoring</h2>
+            <p>
+                As mentioned before there are two different metrics to score how well the alignment is. I used both Euclidean distance (L2) and
+                Normalized Cross-Correlation (NCC).
+            </p>
+            <h3>Euclidean Distance (L2)</h3>
+            <p>
+                With two image \(A\) and \(B\), I calculate the L2 score by comparing the pixel values at every location. For each pixel, 
+                I take the difference between the two images and square it. I then sum all of these squared differences and take the square root. 
+                A lower L2 score means the images are more similar, so during alignment I choose the shift with the smallest score.
+                The Euclidean distance at each pizel was found with:
+            </p>
+            <div class="equation">
+                \[
+                d(\mathbf{u}, \mathbf{v}) =
+                \sqrt{
+                    \sum_{i=1}^{n}
+                    (u_i-v_i)^2
+                }
+                \]
+            </div>
+            <p>
+                With two diffrent images of equal size A, B the L2 Score is determined by:
+            </p>
+            <div class="equation">
+                \[
+                \|A-B\|_2 =
+                \sqrt{
+                    \sum_{i=1}^{n}
+                    \sum_{j=1}^{n}
+                    (A_{ij}-B_{ij})^2
+                }
+                \]
+            </div>
+            <h3>Normalized Cross-Correlation (NCC)</h3>
+            <p>
+                For NCC, I first subtract the mean pixel value from each image patch. This centers the pixel values around zero and makes the 
+                comparison less dependent on the overall brightness of the images. I then calculate the dot product between the two centered 
+                patches and normalize it by their magnitudes. A higher NCC score means the images are more similar, so I
+                choose the shift with the highest score.
+            </p>
+
+            <div class="equation">
+                \[
+                NCC(A,B) =
+                \frac{
+                    \sum_{i,j}(A_{ij}-\bar{A})(B_{ij}-\bar{B})
+                }{
+                    \sqrt{
+                        \sum_{i,j}(A_{ij}-\bar{A})^2
+                        \sum_{i,j}(B_{ij}-\bar{B})^2
+                    }
+                }
+                \]
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Single Scale Alignment</h2>
+            <p>
+                For the lower resolution .jpg images, I would search over a window of [-15, 15] pixel in both the x and y. Then I would score based 
+                on NCC.
+            </p>
+            <div class="images">
+                <div class="image-container">
+                    <img src="images/cathedral_alignedl2.jpg">
+                    <div class="translation">
+                        cathedral.jpg - Best Translation: G: (2, 5) and R: (3, 12)
+                    </div>
+                </div>
+            
+                <div class="image-container">
+                    <img src="images/monastery_alignedl2.jpg">
+                    <div class="translation">
+                        monastery.jpg - Best Translation: G: (2, -3) and R: (2, 3)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/tobolsk_alignedl2.jpg">
+                    <div class="translation">
+                        tobolsk.jpg  - Best Translation: G: (2, 3) and R: (3, 6)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Multi-Scale Pyramid Alignment</h2>
+            <p>
+                The full-resolution .tif scanes are too large to search exhaustively with the same window size, because the displacement could be
+                as much as 100 pixels. Therefore I took a different approach. First I recursively downsized each channel by a factor of 2 with 
+                cv.resize which uses area-averaging interpolation until reach the base case of the image size being at most 150 pixels. Then at
+                coarsest level I ran the same search mentioned before except I used L2 as the scoring metric. Then I would upscale and double the 
+                previous level's estimate and refined it with a small sesarch window of [-5, 5] instead of [-15, 15] around that estimate. This was
+                to optimize and improve the speed of the alignment process. 
+            </p>
+            <div class="images">
+                <div class="image-container">
+                    <img src="images/church_alignedl2.jpg">
+                    <div class="translation">
+                        church.tif - Best Translation: G: (3, 25) and R: (-5, 58)
+                    </div>
+                </div>
+            
+                <div class="image-container">
+                    <img src="images/emir_alignedl2.jpg">
+                    <div class="translation">
+                        emir.tif - Best Translation: G: (23, 49) and R: (40, 107)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/harvesters_alignedl2.jpg">
+                    <div class="translation">
+                        harvesters.tif  - Best Translation: G: (16, 60) and R: (13, 124)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/icon_alignedl2.jpg">
+                    <div class="translation">
+                        icon.tif  - Best Translation: G: (17, 41) and R: (23, 89)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/ilemselga_alignedl2.jpg">
+                    <div class="translation">
+                        ilemselga.tif  - Best Translation: G: (6, 39) and R: (9, 129)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/melons_alignedl2.jpg">
+                    <div class="translation">
+                        melons.tif  - Best Translation: G: (9, 82) and R: (11, 177)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/religous_painting_alignedl2.jpg">
+                    <div class="translation">
+                        religious_painting.tif  - Best Translation: G: (4, 28) and R: (7, 68)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/self_portrait_alignedl2.jpg">
+                    <div class="translation">
+                        self_portrait.tif  - Best Translation: G: (29, 79) and R: (34, 175)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/siren_alignedl2.jpg">
+                    <div class="translation">
+                        siren.tif  - Best Translation: G: (-7, 49) and R: (-25, 96)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/three_generations_alignedl2.jpg">
+                    <div class="translation">
+                        three_generations.tif  - Best Translation: G: (13, 55) and R: (10, 112)
+                    </div>
+                </div>
+
+                <div class="image-container">
+                    <img src="images/wharf_alignedl2.jpg">
+                    <div class="translation">
+                        wharf.tif  - Best Translation: G: (-7, 15) and R: (-17, 83)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Additional Photos</h2>
+            <p>
+                Here are the other photos I have aligned from the Library of Congress collection and ran it through the pyramid alignment 
+                pipeline. 
+            </p>
+            <div class="images">
+                <div class="photo-stack">
+                    <img src="images/catholic_monastery_alignedl2.jpg">
+                    <div class="translation">
+                        catholic_monastery.jpg - Best Translation: G: (-7,50) and R: (-14, 114)
+                    </div>
+                    <img src="images/catholic_monestary_three.jpg">
+
+                </div>
+            
+                <div class="photo-stack">
+                    <img src="images/cotton_textile_alignedl2.jpg">
+                    <div class="translation">
+                        cotton_textile.jpg - Best Translation: G: (14, 52) and R: (18, 105)
+                    </div>
+                    <img src="images/cotton_textile_three.jpg">
+                </div>
+
+                <div class="photo-stack">
+                    <img src="images/embroidered_cloth_alignedl2.jpg">
+                    <div class="translation">
+                        embroidered_cloth.jpg  - Best Translation: G: (52, 58) and R: (80, 113)
+                    </div>
+                    <img src="images/embroidery_three.jpg">
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Difficulties</h2>
+            <h3>Church</h3>
+            <p>
+                I ran into many difficulties with the church.tif file because it did not align cleanly under NCC scoring and with a set cutoff 
+                window. Therefore I changed it to a percentage based cut off number to insure that I was not cropping a large portion of 
+                pixels once the image was downsized. I also moved onto L2 scoring rather than NCC. I think it performed better due to the fact 
+                that it's simpler scoring worked better in the smaller image since it would be downsized to 150 x 150 pixels max. The image has 
+                a large sky and water below it so I think once downsized the patterns were not as apparent so using NCC may have confused the 
+                algorithm. Therefore looking at the value itself per pixel worked better when working with a small image. 
+            </p>
+            <div class="images">
+                <div class="image-container">
+                    <img src="images/church_alignedl_bad.jpg">
+                    <div class="translation">
+                        church.tif - Before (Bad)
+                    </div>
+                </div>
+            
+                <div class="image-container">
+                    <img src="images/church_alignedl2.jpg">
+                    <div class="translation">
+                        church.tif - After (After)
+                    </div>
+                </div>
+            </div>
+            <h3>Emir</h3>
+            <p>
+                I also had issues with the emir.tif photo because it was not aligning correctly with the original image, specifically the red
+                filter. The three different color channels not having the same brightness/intensity patterns causes an issue with aligning based 
+                on intensity values. Therefore I had to add a function that would preprocess the array with Sobel filter to highlight the edges 
+                and it resolved the issue. 
+            </p>
+
+            <div class="images">
+                <div class="image-container">
+                    <img src="images/emir_alignedl_red.jpg">
+                    <div class="translation">
+                        emir.tif - Before (Bad)
+                    </div>
+                </div>
+            
+                <div class="image-container">
+                    <img src="images/emir_alignedl2.jpg">
+                    <div class="translation">
+                        emir.tif - After (After)
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+
+    </div>
+</body>
+</html>
