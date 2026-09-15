@@ -44,6 +44,7 @@ p {
 
 .images {
     display: flex;
+    flex-wrap: wrap;
     gap: 20px;
     justify-content: center;
     margin: 25px 0;
@@ -53,17 +54,18 @@ p {
     flex-wrap: nowrap;
 }
 
+.images img {
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 3px 12px rgba(214, 51, 108, 0.25);
+}
+
 .images.single-row img {
     flex: 1 1 0;
     width: auto;
     min-width: 0;
 }
 
-.images img {
-    width: 100%;
-    border-radius: 8px;
-    box-shadow: 0 3px 12px rgba(214, 51, 108, 0.25);
-}
 
 .image-container {
     text-align: center;
