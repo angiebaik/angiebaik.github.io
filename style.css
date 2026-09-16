@@ -56,8 +56,6 @@ p {
 
 .images img {
     max-width: 100%;
-    max-height: 400px;
-    width: auto;
     height: auto;
 }
 
@@ -121,6 +119,12 @@ p {
 .photo-stack {
     width: 45%;
     margin: 25px auto;
+}
+
+.photo-stack img {
+    width: 100%;
+    height: auto;
+    display: block;
 }
 
 .back {
