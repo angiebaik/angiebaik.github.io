@@ -41,7 +41,7 @@
                 by its height for the different channels (R, G, B). Then I take the three images and stack them on top of each other by aligning
                 the G and R channel to the B channel photo. In order to align the images I would search through a window a certain size and scored
                 the alignment of the photos based on certain metrics like L2 or NCC. Before scoring I would crop out a certain cutoff percentage
-                based on the image size (5%), so that the wraparouned pixels from np.roll do not ruin the score. 
+                based on the image size (5%), so that the wrap around pixels from np.roll do not ruin the score. 
             </p>
         </div>
 
@@ -56,7 +56,7 @@
                 With two image \(A\) and \(B\), I calculate the L2 score by comparing the pixel values at every location. For each pixel, 
                 I take the difference between the two images and square it. I then sum all of these squared differences and take the square root. 
                 A lower L2 score means the images are more similar, so during alignment I choose the shift with the smallest score.
-                The Euclidean distance at each pizel was found with:
+                The Euclidean distance at each pixel was found with:
             </p>
             <div class="equation">
                 \[
@@ -68,7 +68,7 @@
                 \]
             </div>
             <p>
-                With two diffrent images of equal size A, B the L2 Score is determined by:
+                With two different images of equal size A, B the L2 Score is determined by:
             </p>
             <div class="equation">
                 \[
@@ -136,7 +136,7 @@
         <div class="section">
             <h2>Multi-Scale Pyramid Alignment</h2>
             <p>
-                The full-resolution .tif scanes are too large to search exhaustively with the same window size, because the displacement could be
+                The full-resolution .tif scans are too large to search exhaustively with the same window size, because the displacement could be
                 as much as 100 pixels. Therefore I took a different approach. First I recursively downsized each channel by a factor of 2 with 
                 cv.resize which uses area-averaging interpolation until reach the base case of the image size being at most 150 pixels. Then at
                 coarsest level I ran the same search mentioned before except I used L2 as the scoring metric. Then I would upscale and double the 
