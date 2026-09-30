@@ -187,3 +187,9 @@ table.threshold-table th, table.threshold-table td {
     font-size: 15px;
     margin: 15px 0;
 }
+.filter-display img {
+    width: 200px;
+    height: 200px;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
