@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS180 Project 2: Fun with Filters and Frequencies</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Fun with Filters and Frequencies!</h1>
+        <p class="intro">
+            CS180 Project 2 — convolution, edge detection, Gaussian/DoG filters, image sharpening,
+            hybrid images, and multiresolution blending.
+        </p>
+
+
+<div class="section">
+    <h2>Part 1.1: Convolutions from Scratch</h2>
+    <p>
+        I implemented image convolution from scratch using only numpy, in two ways: a
+        four for loop version, which looped over every output pixel and every kernel entry, and a
+        faster two for loop version, which looped only over the kernel and using numpy slicing to update the
+        whole image at once. Both implementations flip the kernel and zero-pad the input so the
+        output matches the input size. All three gave the same/similar outputs. 
+    </p>
+
+    <h3>Four-loop convolution</h3>
+<p>
+    This version loops over every output pixel, and for each one, loops over every entry in the
+    kernel to compute the weighted sum directly:
+</p>
+<pre><code>def four_for_loop(image, kernel):
+    kernel_h, kernel_w = kernel.shape
+    image_h, image_w = image.shape
+
+    padded_img = np.pad(image, ((kernel_h//2, kernel_h//2), (kernel_w//2, kernel_w//2)))
+    kernel_filter_flipped = kernel[::-1, ::-1]
+
+    output = np.zeros((image_h, image_w))
+
+    for ih in range(len(output)):
+        for iw in range(len(output[0])):
+            new_value = 0
+            for kh in range(kernel_h):
+                for kw in range(kernel_w):
+                    new_value += padded_img[ih + kh][iw + kw] * kernel_filter_flipped[kh][kw]
+            output[ih][iw] = new_value
+
+    return output</code></pre>
+
+<h3>Two-loop convolution</h3>
+<p>
+    This version only loops over the kernel entries, and uses numpy slicing to update the entire
+    output image at once for each kernel entry, avoiding the two innermost pixel loops entirely:
+</p>
+<pre><code>def two_for_loop(image, kernel):
+    kernel_h, kernel_w = kernel.shape
+    image_h, image_w = image.shape
+
+    padded_img = np.pad(image, ((kernel_h//2, kernel_h//2), (kernel_w//2, kernel_w//2)))
+    kernel_filter_flipped = kernel[::-1, ::-1]
+
+    output = np.zeros((image_h, image_w))
+
+    for kh in range(kernel_h):
+        for kw in range(kernel_w):
+            output += kernel_filter_flipped[kh, kw] * padded_img[kh:kh + image_h, kw:kw + image_w]
+
+    return output</code></pre>
+
+    <h3>Runtime comparison</h3>
+    <p>
+        The runtime for the four for loop one is significantly lower running for 295.94s, while the two for loop and 
+        scipy runtime were 1.30s and 1.16s, respectively. 
+    </p>
+
+    <h3>Boundary handling</h3>
+    <p>
+        Boundaries are handled via zero-padding. The image is padded with zeros on all sides before
+        convolving, so every output pixel has a full neighborhood to work with. This can slightly
+        darken or distort values very close to the image edges, since the filter is averaging against
+        fabricated zero values rather than real image content there.
+    </p>
+
+    <h3>Correctness check against scipy</h3>
+    <p>Box filter (9x9) applied to my own photo, compared across all three implementations:</p>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.1/self_image.jpg" alt="Original photo">
+            <p>Original</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.1/gray_self.png" alt="Original grayscale photo">
+            <p>Original (greyscale)</p>
+        </div>
+    </div>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.1/four_loops.png" alt="Four-loop box blur">
+            <p>Four loop convolution</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.1/two_loops.png" alt="Two-loop box blur">
+            <p>Two loop convolution</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.1/box_scipy.png" alt="scipy box blur">
+            <p>scipy.signal.convolve2d</p>
+        </div>
+    </div>
+
+    <h3>Finite difference operators (D_x, D_y)</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.1/my_dx.png" alt="Dx applied to my photo">
+            <p>D_x</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.1/my_dy.png" alt="Dy applied to my photo">
+            <p>D_y</p>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Part 1.2: Finite Difference Operator</h2>
+    
+    <p>
+        In this section I worked with the cameraman image. I was able to distinctly make the edges of the image stand out by 
+        binarizing the convolved images. Applying D_x and D_y, filter from before, directly to the cameraman image gives the partial derivatives in x and
+        y. Combining them via gradient magnitude (sqrt(dx² + dy²)) highlights edges, and thresholding that magnitude image produces a binary edge map.
+    </p>
+
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.2/camera_dx.png" alt="Cameraman Dx">
+            <p>∂/∂x</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.2/camera_dy.png" alt="Cameraman Dy">
+            <p>∂/∂y</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.2/grad_mag_camera.png" alt="Cameraman gradient magnitude">
+            <p>Gradient Magnitude</p>
+        </div>
+    </div>
+
+    <h3>Choosing a threshold</h3>
+    <p>I tried several thresholds and compared how well each suppressed noise while preserving real edges:</p>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.2/cameraman_binary_0.1.png" alt="threshold 0.1">
+            <p>t = 0.1</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.2/cameraman_binary_0.2.png" alt="threshold 0.2">
+            <p>t = 0.2</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.2/cameraman_binary_0.25.png" alt="threshold 0.25">
+            <p>t = 0.25</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.2/cameraman_binary_0.3.png" alt="threshold 0.3">
+            <p>t = 0.3</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.2/cameraman_binary_0.4.png" alt="threshold 0.4">
+            <p>t = 0.4</p>
+        </div>
+    </div>
+    <div class="note">
+        I chose for my final that the threshold is t=0.25 because lots of the noise in the ground disappeared and the image
+        held onto the important outlines of the photo. However we do lose some building details in the background. 
+    </div>
+</div>
+
+<div class="section">
+    <h2>Part 1.3: Derivative of Gaussian (DoG) Filter</h2>
+    <p>
+        Blurring the cameraman image with a Gaussian filter before differentiating suppresses the
+        noise seen in Part 1.2. I compare this two-step process (blur, then differentiate) against a
+        single-step process using a combined DoG filter (Gaussian convolved directly with D_x / D_y).
+    </p>
+
+    <h3>How I built it</h3>
+    <p>
+        To build the 2D Gaussian filter, I used <code>cv2.getGaussianKernel(size, sigma)</code> to get
+        a 1D Gaussian, then took its outer product with its own transpose to spread it across both
+        dimensions:
+    </p>
+    <pre><code>def gaussian_2d(size, sd):
+    g1d = cv2.getGaussianKernel(size, sd)
+    g2d = g1d @ g1d.T
+    return g2d</code></pre>
+    <p>
+        This works because a 2D Gaussian is separable — it can be exactly decomposed into the product
+        of two 1D Gaussians, one per axis — so the outer product gives an exact 2D Gaussian, not an
+        approximation. I chose the kernel size as <code>2 * ceil(3 * sigma) + 1</code>, which keeps
+        roughly 3 standard deviations of the curve on each side of the center and guarantees an odd
+        size (so there's always a well-defined center pixel).
+    </p>
+    <p>
+        For the two-step approach, I blurred the image with this Gaussian, then convolved the blurred
+        result with D_x and D_y separately. For the single-step DoG approach, I instead convolved the
+        Gaussian filter itself with D_x and D_y first, producing two small combined filters, then
+        convolved the original (unblurred) image with those directly:
+    </p>
+    <pre><code>def DoG_filter(gaussian, Dx, Dy):
+    DoG_x = two_for_loop(gaussian, Dx)
+    DoG_y = two_for_loop(gaussian, Dy)
+    return DoG_x, DoG_y</code></pre>
+    <p>
+        Both approaches use the same <code>two_for_loop</code> convolution function from Part 1.1 —
+        the only difference is whether the blurring and differentiating happen as two separate
+        convolutions against the image, or as one convolution against a pre-combined filter.
+    </p>
+
+    <h3>Gaussian-smoothed edges</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.3/blurred_cameraman.png" alt="Blurred cameraman">
+            <p>Gaussian-blurred cameraman</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.3/blur_grad_mag.png" alt="Blurred gradient magnitude">
+            <p>Gradient magnitude (post-blur)</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.3/blur_edges.png" alt="Blurred binarized edges">
+            <p>Binarized edges (post-blur)</p>
+        </div>
+    </div>
+    <p>
+        Compared to the un-blurred edge map from Part 1.2, this result does have a bit more specles but holds a lot more edges and details. 
+        Because the Gaussian blur removes high-frequency noise before differentiation, I was able to use a lower threshold (0.1, vs. 0.25)
+        to binarize the gradient magnitude without noise creeping back in.
+    </p>
+
+    <h3>DoG filters (visualized)</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.3/DoG_x.png" alt="DoG x filter">
+            <p>DoG_x</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.3/DoG_y.png" alt="DoG y filter">
+            <p>DoG_y</p>
+        </div>
+    </div>
+
+    <h3>Two-step blur-then-differentiate vs. single-step DoG convolution</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.3/blur_dx.png" alt="Blur then Dx">
+            <p>Blur → D_x</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.3/blur_dy.png" alt="Blur then Dy">
+            <p>Blur → D_y</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.3/dog_dx.png" alt="DoG_x applied">
+            <p>DoG_x filter applied directly</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.3/dog_dy.png" alt="DoG_y applied">
+            <p>DoG_y filter applied directly</p>
+        </div>
+    </div>
+    <div class="note">
+        These two approaches — blur-then-differentiate, and the single DoG convolution — are
+        mathematically equivalent, since convolution is associative:
+        (image * Gaussian) * D_x = image * (Gaussian * D_x). This is a different comparison from the
+        1.2-vs-1.3 comparison above: this one is about two ways of computing the same result, not
+        about the effect of smoothing on noise.
+    </div>
+
+    <h3>DoG edges</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/1.3/dog_grad_mag.png" alt="DoG gradient magnitude">
+            <p>DoG gradient magnitude</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/1.3/dog_edges.png" alt="DoG binarized edges">
+            <p>DoG binarized edges</p>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Part 2.1: Image Sharpening (Unsharp Masking)</h2>
+    <p>
+        A Gaussian filter is a low-pass filter: convolving with it keeps only an image's low
+        frequencies (smooth, slowly varying content) and removes fine detail. Subtracting that
+        blurred version from the original image isolates the high frequencies (edges, texture) that
+        the blur removed. Adding some extra amount of that high-frequency content back onto the
+        original makes the image appear sharper. Algebraically, this collapses into a single combined
+        filter: <code>(1 + alpha) * impulse - alpha * gaussian</code>, where the impulse filter (a
+        single 1 at the center, 0 elsewhere) represents "the unmodified original image" in the
+        language of convolution, so the whole operation can be done with one convolution instead of
+        three separate steps.
+    </p>
+
+    <h3>Taj Mahal</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.1/taj_original.png" alt="Taj Mahal original">
+            <p>Original</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/taj_blurred.png" alt="Taj Mahal blurred">
+            <p>Blurred (low frequencies)</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/taj_high_freq.png" alt="Taj Mahal high frequency">
+            <p>High frequency (original − blurred)</p>
+        </div>
+    </div>
+
+    <h3>Varying the sharpening amount (alpha)</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.1/taj_sharpened_alpha0.5.png" alt="alpha 0.5">
+            <p>alpha = 0.5</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/taj_sharpened_alpha1.png" alt="alpha 1">
+            <p>alpha = 1</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/taj_sharpened_alpha1.5.png" alt="alpha 1.5">
+            <p>alpha = 1.5</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/taj_sharpened_alpha2.png" alt="alpha 2">
+            <p>alpha = 2</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/taj_sharpened_alpha3.png" alt="alpha 3">
+            <p>alpha = 3</p>
+        </div>
+    </div>
+    <div class="note">
+        As alpha increases, the edges become progressively more pronounced
+    </div>
+
+    <h3>Second image: NYC scenery</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.1/scenery_original.png" alt="NYC original">
+            <p>Original</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/scenery_blurred.png" alt="NYC blurred">
+            <p>Blurred</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/scenery_high_freq.png" alt="NYC high frequency">
+            <p>High frequency</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.1/scenery_sharpened.png" alt="NYC sharpened">
+            <p>Sharpened from Blurred</p>
+        </div>
+    </div>  
+    <div class="note">
+        We can we that it almost get to the same level as the original image. The differences are small and require viewer to 
+        to zoom in
+    </div>
+</div>
+
+
+<div class="section">
+    <h2>Part 2.2: Hybrid Images</h2>
+    <p>
+        A hybrid image combines the high frequencies of one image with the low frequencies of
+        another. When clost the eye is dominated by high-frequency detail, so the sharp image is seen. However, from
+        a far only the smooth low-frequency content can be seen, so the blurry image is seen instead. Each input image's 
+        cutoff frequency (sigma) was chosen experimentally — too low a sigma for the high-frequency image leaves residual low-frequency content 
+        that causes ghosting; too high a sigma for the low-frequency image destroys recognizable structure.
+    </p>
+
+    <h3>Required pair: Derek + Nutmeg</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.2/cat_david_hybrid.png" alt="Derek Nutmeg hybrid">
+            <p>Hybrid result</p>
+        </div>
+    </div>
+
+    <h3>Full process: Glinda + Elphaba</h3>
+    <p>Original and aligned images:</p>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.2/elphaba.png" alt="Elphaba original">
+            <p>Elphaba (original)</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.2/glinda.png" alt="Glinda original">
+            <p>Glinda (original)</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.2/elphaba_aligned.png" alt="Elphaba aligned">
+            <p>Elphaba (aligned)</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.2/glinda_aligned.png" alt="Glinda aligned">
+            <p>Glinda (aligned)</p>
+        </div>
+    </div>
+
+    <p>Fourier transforms of the two input images:</p>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.2/elphaba_aligned_fft.png" alt="Elphaba FFT">
+            <p>FFT: Elphaba (aligned)</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.2/glinda_aligned_fft.png" alt="Glinda FFT">
+            <p>FFT: Glinda (aligned)</p>
+        </div>
+    </div>
+
+    <p>Filtered images and their Fourier transforms:</p>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.2/elphaba_high_freq.png" alt="Elphaba high freq">
+            <p>Elphaba, high-pass filtered</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.2/glinda_low_freq.png" alt="Glinda low freq">
+            <p>Glinda, low-pass filtered</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.2/elphaba_hfrq_fft.png" alt="Elphaba high freq FFT">
+            <p>FFT: Elphaba high-pass</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.2/glinda_lfrq_fft.png" alt="Glinda low freq FFT">
+            <p>FFT: Glinda low-pass</p>
+        </div>
+    </div>
+
+    <p>Cutoff frequency choice and final result:</p>
+    <div class="note">
+        The best combination that was best for all three versions was sigma1 (high-pass) of 4 and sigma2 (low-pass) of 6. 
+    </div>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.2/glinda_elphaba_hybrid.png" alt="Glinda Elphaba hybrid">
+            <p>Final hybrid</p>
+        </div>
+        <div class="image-container">
+            <img src="output_img/2.2/glinda_elphaba_fft_hybrid.png" alt="Hybrid FFT">
+            <p>FFT: final hybrid</p>
+        </div>
+    </div>
+
+    <h3>Second pair of your own choice</h3>
+    <div class="images">
+        <div class="image-container">
+            <img src="output_img/2.2/spongebob_patrick_hybrid.png" alt="Spongebob Patrick hybrid">
+            <p>Spongebob + Patrick hybrid</p>
+        </div>
+    </div>
+
+</div>
+
+<div class="section">
+    <h2>Part 2.3: Gaussian and Laplacian Stacks</h2>
+    <p>
+        A stack is like a pyramid but without downsampling, every level stays the same resolution as
+        the original image. Each Gaussian stack level is the previous level blurred again with the
+        same Gaussian filter. Each Laplacian stack level is the difference between consecutive
+        Gaussian levels (capturing the band of detail removed by that blur step); the final Laplacian
+        level is simply the last, most-blurred Gaussian level, kept as-is. Summing every Laplacian
+        level reconstructs the original image exactly.
+    </p>
+
+    <h3>Apple: Gaussian stack (levels 0–4)</h3>
+    <div class="images">
+        <div class="image-container"><img src="output_img/2.3/apple_gaussian_level_0.png" alt="apple gaussian 0"><p>Level 0</p></div>
+        <div class="image-container"><img src="output_img/2.3/apple_gaussian_level_1.png" alt="apple gaussian 1"><p>Level 1</p></div>
+        <div class="image-container"><img src="output_img/2.3/apple_gaussian_level_2.png" alt="apple gaussian 2"><p>Level 2</p></div>
+        <div class="image-container"><img src="output_img/2.3/apple_gaussian_level_3.png" alt="apple gaussian 3"><p>Level 3</p></div>
+        <div class="image-container"><img src="output_img/2.3/apple_gaussian_level_4.png" alt="apple gaussian 4"><p>Level 4</p></div>
+    </div>
+
+    <h3>Apple: Laplacian stack (levels 0–4)</h3>
+    <div class="images">
+        <div class="image-container"><img src="output_img/2.3/apple_laplacian_level_0.png" alt="apple laplacian 0"><p>Level 0</p></div>
+        <div class="image-container"><img src="output_img/2.3/apple_laplacian_level_1.png" alt="apple laplacian 1"><p>Level 1</p></div>
+        <div class="image-container"><img src="output_img/2.3/apple_laplacian_level_2.png" alt="apple laplacian 2"><p>Level 2</p></div>
+        <div class="image-container"><img src="output_img/2.3/apple_laplacian_level_3.png" alt="apple laplacian 3"><p>Level 3</p></div>
+        <div class="image-container"><img src="output_img/2.3/apple_laplacian_level_4.png" alt="apple laplacian 4"><p>Level 4</p></div>
+    </div>
+
+    <h3>Orange: Gaussian stack (levels 0–4)</h3>
+    <div class="images">
+        <div class="image-container"><img src="output_img/2.3/orange_gaussian_level_0.png" alt="orange gaussian 0"><p>Level 0</p></div>
+        <div class="image-container"><img src="output_img/2.3/orange_gaussian_level_1.png" alt="orange gaussian 1"><p>Level 1</p></div>
+        <div class="image-container"><img src="output_img/2.3/orange_gaussian_level_2.png" alt="orange gaussian 2"><p>Level 2</p></div>
+        <div class="image-container"><img src="output_img/2.3/orange_gaussian_level_3.png" alt="orange gaussian 3"><p>Level 3</p></div>
+        <div class="image-container"><img src="output_img/2.3/orange_gaussian_level_4.png" alt="orange gaussian 4"><p>Level 4</p></div>
+    </div>
+
+    <h3>Orange: Laplacian stack (levels 0–4)</h3>
+    <div class="images">
+        <div class="image-container"><img src="output_img/2.3/orange_laplacian_level_0.png" alt="orange laplacian 0"><p>Level 0</p></div>
+        <div class="image-container"><img src="output_img/2.3/orange_laplacian_level_1.png" alt="orange laplacian 1"><p>Level 1</p></div>
+        <div class="image-container"><img src="output_img/2.3/orange_laplacian_level_2.png" alt="orange laplacian 2"><p>Level 2</p></div>
+        <div class="image-container"><img src="output_img/2.3/orange_laplacian_level_3.png" alt="orange laplacian 3"><p>Level 3</p></div>
+        <div class="image-container"><img src="output_img/2.3/orange_laplacian_level_4.png" alt="orange laplacian 4"><p>Level 4</p></div>
+    </div>
+
+    <h3>Recreating Figure 3.42 (a)–(l)</h3>
+    <p>
+        Rows correspond to Laplacian levels 0, 2, and 4 (high, medium, and low frequency), plus a
+        fourth row showing the original images masked directly (no Laplacian decomposition) for
+        comparison. Columns show the apple's contribution (weighted by the mask), the orange's
+        contribution (weighted by the inverse mask), and their sum.
+    </p>
+    <div class="pyramid-grid">
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row0_apple_weighted.png" alt="(a)"><p>(a) Apple, level 0</p></div>
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row0_orange_weighted.png" alt="(b)"><p>(b) Orange, level 0</p></div>
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row0_summed.png" alt="(c)"><p>(c) Sum, level 0</p></div>
+
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row1_apple_weighted.png" alt="(d)"><p>(d) Apple, level 2</p></div>
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row1_orange_weighted.png" alt="(e)"><p>(e) Orange, level 2</p></div>
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row1_summed.png" alt="(f)"><p>(f) Sum, level 2</p></div>
+
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row2_apple_weighted.png" alt="(g)"><p>(g) Apple, level 4</p></div>
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row2_orange_weighted.png" alt="(h)"><p>(h) Orange, level 4</p></div>
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row2_summed.png" alt="(i)"><p>(i) Sum, level 4</p></div>
+
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row3_apple_weighted.png" alt="(j)"><p>(j) Apple, original (masked)</p></div>
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row3_orange_weighted.png" alt="(k)"><p>(k) Orange, original (masked)</p></div>
+        <div class="pyramid-item"><img src="output_img/2.3/fig342_row3_summed.png" alt="(l)"><p>(l) Final oraple</p></div>
+    </div>
+    <p>
+        Note the visible hard seam in row (j)(k)(l), where the original photos are masked directly
+        with no frequency decomposition — this is exactly the seam that multiresolution blending
+        (Part 2.4) is designed to eliminate.
+    </p>
+</div>
+
+<div class="section">
+    <h2>Part 2.4: Multiresolution Blending (the Oraple!)</h2>
+    <p>
+        To blend two images without a visible seam, I build a Gaussian stack and Laplacian stack for
+        each input image, plus a Gaussian stack for the blending mask itself. At each level, I combine
+        the two images' Laplacian levels using that level's blurred mask as the blend weight
+        (<code>mask * laplacian_A + (1 - mask) * laplacian_B</code>), then sum every blended level to
+        get the final result. Blurring the mask at each level — rather than using one hard cutoff for
+        every frequency band — is what makes the seam disappear.
+    </p>
+
+    <h3>Oraple (vertical seam, apple + orange)</h3>
+    <div class="images">
+        <div class="image-container"><img src="output_img/2.4/oraple.png" alt="Oraple result"><p>Final blended result</p></div>
+    </div>
+
+    <h3>Custom blend #1: vertical seam</h3>
+    <div class="images">
+        <div class="image-container"><img src="output_img/2.4/swinter.png" alt="Summer winter blend"><p>Summer / winter blend</p></div>
+    </div>
+
+    <h3>Custom blend #2: irregular mask</h3>
+    <p>
+        This blend uses a circular mask instead of a straight line, satisfying the requirement for an
+        irregular-shaped mask.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="output_img/2.4/night_sun.png" alt="Sun moon blend"><p>Sun / moon blend (circular mask)</p></div>
+    </div>
+
+    <h3>Favorite result — illustrating the process: Summer / Winter</h3>
+    <p>
+        The summer/winter blend is my favorite result. Rows correspond to Laplacian levels 0, 2, and
+        4, plus a fourth row showing the original images masked directly (no frequency decomposition)
+        for comparison against the final smooth blend.
+    </p>
+    <div class="pyramid-grid">
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row0_summer_weighted.png" alt="summer level 0"><p>Summer, level 0</p></div>
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row0_winter_weighted.png" alt="winter level 0"><p>Winter, level 0</p></div>
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row0_summed.png" alt="sum level 0"><p>Sum, level 0</p></div>
+
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row1_summer_weighted.png" alt="summer level 2"><p>Summer, level 2</p></div>
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row1_winter_weighted.png" alt="winter level 2"><p>Winter, level 2</p></div>
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row1_summed.png" alt="sum level 2"><p>Sum, level 2</p></div>
+
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row2_summer_weighted.png" alt="summer level 4"><p>Summer, level 4</p></div>
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row2_winter_weighted.png" alt="winter level 4"><p>Winter, level 4</p></div>
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row2_summed.png" alt="sum level 4"><p>Sum, level 4</p></div>
+
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row3_summer_weighted.png" alt="summer original"><p>Summer, original (masked)</p></div>
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row3_winter_weighted.png" alt="winter original"><p>Winter, original (masked)</p></div>
+        <div class="pyramid-item"><img src="output_img/2.4/fig342_row3_summed.png" alt="final swinter"><p>Final swinter blend</p></div>
+    </div>
+</div>
+
+    </div>
+</body>
+</html>

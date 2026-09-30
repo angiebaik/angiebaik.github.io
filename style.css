@@ -166,3 +166,24 @@ p {
     font-size: 14px;
     text-decoration: none;
 }
+
+table.threshold-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background: white;
+}
+table.threshold-table th, table.threshold-table td {
+    border: 1px solid #f3b6d1;
+    padding: 8px;
+    text-align: center;
+    font-size: 15px;
+    color: #885c7a;
+}
+.note {
+    background: #fff0f5;
+    border-left: 4px solid #ad5c78;
+    padding: 10px 15px;
+    font-size: 15px;
+    margin: 15px 0;
+}
