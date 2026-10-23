@@ -267,7 +267,13 @@
 
 <div class="section">
     <h2>Part B, Section 1: Training a Single-Step Denoising UNet</h2>
-
+    <p>
+        In Part B I stopped using a pretrained model and built my own, starting with a UNet that I train to clean up noisy MNIST digits in a single 
+        step. The UNet works on 28 x 28 images. Its encoder uses convolutions to shrink the image to 14 x 14 and then 7 x 7, a pooling 
+        layer then squeezes it to a single bottleneck vector, and the decoder uses transposed convolutions to bring it back to 28 x 28. At each 
+        resolution the decoder is also given the encoder features from the same size, which lets it recover fine stroke detail that the bottleneck 
+        would otherwise lose. 
+    </p>
     <h3>B1.2 Using the UNet to Train a Denoiser</h3>
     <p>
         The denoiser takes a noisy image \(z = x + \sigma\,\epsilon\) with \(\epsilon \sim \mathcal{N}(0, I)\) and is trained
@@ -320,14 +326,12 @@
         <div class="image-container"><img src="part_b/pure_noise_epoch_5.png" alt="Pure noise outputs after epoch 5"><p>After epoch 5</p></div>
     </div>
     <p>
-        The outputs all look like nearly the same blurry digit-like blob, no matter what the input noise was. This happens
-        because the noise carries no information about which digit it came from, so the model cannot do better than predicting
-        the same thing for every input. With an L2 loss, the output that minimizes the expected error is the mean of the training distribution, which is the average image of all MNIST digits.
-        The model learns to output that average, which is why we see a smooth, blurry shape that is a mix of many digits.
-    </p>
-    <p>
-        The outputs look almost the same at epoch 1 and epoch 5. One blurry, centered blob that resembles an average of many digits, mainly 0 and 8 like shape though, identical for every input noise.
-        By epoch 5 the blob is a little smoother and slightly better defined, with fewer speckles, but it does not turn into any particular digit.
+        The outputs all look like nearly the same blurry digit-like blob, mostly a 0 or 8 shape, no matter what the input noise was. This happens 
+        because the noise carries no information about which digit it came from, so the model cannot do better than predicting the same thing for 
+        every input. With an L2 loss, the output that minimizes the expected error is the mean of the training distribution, which is the average 
+        image of all MNIST digits. The model learns to output that average, which is why we see a smooth, blurry shape that is a mix of many digits. 
+        The outputs at epoch 1 and epoch 5 are almost the same, except epoch 5 the blob is a little smoother and slightly better defined, with fewer 
+        speckles.
     </p>
 </div>
 
