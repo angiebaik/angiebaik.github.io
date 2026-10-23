@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS180 Project 3 Part A: Exploring the Power of Flow Models</title>
+    <link rel="stylesheet" href="../style.css">
+    <script>window.MathJax = {tex: {inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]]}};</script>
+    <script async src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js"></script>
+
+</head>
+<body>
+    <div class="container">
+        <a class="back" href="../index.html">← Back to Portfolio</a>
+        <h1>Project 3 Part A: Exploring the Power of Flow Models</h1>
+        <p class="intro">
+            I used the pretrained flow model PixNerd (512 x 512 images) to implement
+            sampling, classifier-free guidance, image editing, visual anagrams, and hybrid images.
+            I did not have to do any model training for Part A. Throughout, time t = 0 is pure noise and
+            t = 1 is a clean image, the Euler step size is h = 0.02, and prompts are turned into
+            embeddings with <code>model.encode</code>. My random seed is 180, excdpt for certain sections like 
+            visual anagrams and hybrid images in order to create a better image generation. 
+        </p>
+
+
+<div class="section">
+    <h2>Part 1: Visualizing Training and Sampling</h2>
+
+    <h3>1.1 Constructing Noisy Training Inputs</h3>
+    <p>
+        The noisy input is a linear interpolation between Gaussian noise \(x_0 = \epsilon \sim \mathcal{N}(0, I)\) and the clean image \(x_1\):
+        \[ x_t = (1 - t)\,x_0 + t\,x_1, \qquad t \in [0, 1]. \]
+        This is not just adding noise to the image, as noise is also being scaled by \(t\). I checked t = 0 returning
+        noise and t = 1 returning the clean image, so I could just reuse one noise tensor.
+    </p>
+    <p>My image is a photo from Seattle at Kerry Park, showcasing the Seattle skyline with Mount Rainer in the background. 
+        My original image followed by the noisy versions at t = 0.25, 0.50, and 0.75:</p>
+    <div class="images">
+        <div class="image-container">
+            <img src="part_a/1.1.png" alt="Original image and noisy versions at t = 0.25, 0.5, 0.75">
+            <p>Original, t = 0.25, t = 0.50, t = 0.75</p>
+        </div>
+    </div>
+
+    <h3>1.2 Classical Denoising</h3>
+    <p>
+        As a baseline I restored the image amplitude by dividing by t, since
+        \[ \frac{x_t}{t} = x_1 + \frac{1 - t}{t}\,\epsilon, \]
+        and then applied a Gaussian blur. I chose the sigmas for the gaussian blur with sigma = 1, 2, 4, 8, 16 and kept the sigma with the lowest
+        mean squared error against the clean image. Each image shows the noisy input next to its best blurred version.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.2_blur_0.25.png" alt="Gaussian blur at t = 0.25"><p>t = 0.25</p></div>
+        <div class="image-container"><img src="part_a/1.2_blur_0.5.png" alt="Gaussian blur at t = 0.50"><p>t = 0.50</p></div>
+        <div class="image-container"><img src="part_a/1.2_blur_0.75.png" alt="Gaussian blur at t = 0.75"><p>t = 0.75</p></div>
+    </div>
+
+    <h3>1.3 One-Step Denoising</h3>
+    <p>
+        The pretrained model predicts a velocity, not noise. I extrapolate from \(x_t\) to the clean endpoint with
+        one prediction, using the embedding \(c\) for "a high quality photo":
+        \[ \hat{x}_1 = x_t + (1 - t)\, v_\theta(x_t, t, c). \]
+    </p>
+    <p>Original, noisy input, and one-step estimate for each t:</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.3_one_step_0.25.png" alt="One-step denoising at t = 0.25"><p>t = 0.25</p></div>
+        <div class="image-container"><img src="part_a/1.3_one_step_0.5.png" alt="One-step denoising at t = 0.50"><p>t = 0.50</p></div>
+        <div class="image-container"><img src="part_a/1.3_one_step_0.75.png" alt="One-step denoising at t = 0.75"><p>t = 0.75</p></div>
+    </div>
+    <p>We can tell from a singular one step that the result is much better than our output in 1.2</p>
+
+    <h3>1.4 Visualizing Velocity</h3>
+    <p>
+        The update the model adds in 1.3 is (1 - t) * v̂. Since I know the clean image, the ground-truth update is
+        \((1 - t)\,v_{gt} = x_1 - x_t\), where \(v_{gt} = x_1 - \epsilon\). The error map is the per-pixel RMS difference, averaged over the RGB channels:
+        \[ E_t = \sqrt{\operatorname{mean}_{\text{RGB}}\!\left[\big((1 - t)(\hat{v} - v_{gt})\big)^2\right]}. \] 
+    </p>
+    <p>Original image (shown once):</p>
+    <div class="images">
+        <div class="image-container" style="max-width:300px;"><img src="part_a/1.4_velocity_original.png" alt="Original image"><p>Original</p></div>
+    </div>
+    <p>For each t: noisy image, predicted update, ground-truth update, and error heatmap.</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.4_velocity_0.25.png" alt="Velocity visualization at t = 0.25"><p>t = 0.25</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.4_velocity_0.50.png" alt="Velocity visualization at t = 0.50"><p>t = 0.50</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.4_velocity_0.75.png" alt="Velocity visualization at t = 0.75"><p>t = 0.75</p></div>
+    </div>
+    <p>I can see that the errors is brightest when t = 0.25 and the error lightens as it gets closer to zero like in t = 0.75.</p>
+
+    <h3>1.5 Iterative Denoising with Euler Sampling</h3>
+    <p>
+        One-step denoising is inaccurate because the learned velocity changes along the path. Instead I take small Euler steps,
+        \(x_{t+h} = x_t + h\, v(x_t, t)\), and recompute the velocity after every update. I used h = 0.02 and shortened the last
+        step when needed so the sampler ends exactly at t = 1. Starting from the saved t = 0.50 noisy image, that is 25 Euler updates.
+    </p>
+    <p>
+        I tested it on a constant velocity field, where the answer is known exactly, starting at t = 0 (meaning we have 50 full steps),
+        t = 0.5 (25 steps), and t = 0.93 (a shortened final step).
+    </p>
+    <p>The denoising trajectory: the initial state, every fifth update, and the final image, labeled by time.</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.5_trajectory.png" alt="Euler denoising trajectory"><p>Euler trajectory from t = 0.50</p></div>
+    </div>
+    <p>Comparison using the same noisy input: original, Gaussian blur, one-step denoising, and iterative Euler denoising.</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.5_comparison.png" alt="Comparison of blur, one-step, and Euler"><p>Original vs. blur vs. one-step vs. Euler</p></div>
+    </div>
+
+    <p><p>
+        All methods start with the t = 0.50 noisy image. The gaussian blur removes some of the grain but it leaves speckles that are
+        around the image, removing the details. The buildings are blur shaped. One-step denoising gives us a significantly better image
+        with the right layout and colors, however the specific details are still a little too blurred, very smooth. The best result is Eulers
+        result, with the sharpest details closest to the original image. However it is not perfect, as around the Space Needle there is a slightly
+        odd structure. It is most likely due to the fine details that go around there the small stright lines that are right next to each other. However
+        the mountain in the back is not very existent. 
+    </p></p>
+    
+    <h3>1.6 Sampling from Pure Noise</h3>
+    <p>
+        Starting from pure Gaussian noise at t = 0 and running the sampler to t = 1 with the prompt "a high quality photo" generates new images.
+        Here are five samples from five different noise seeds (180 to 184), without guidance. I reuse the same five noises in Part 2.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.6_conditional_samples.png" alt="Five conditional samples"><p>Five samples, "a high quality photo", no guidance</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_a/1.6_conditional_0.png" alt="Sample 0"><p>Seed 180</p></div>
+        <div class="image-container"><img src="part_a/1.6_conditional_1.png" alt="Sample 1"><p>Seed 181</p></div>
+        <div class="image-container"><img src="part_a/1.6_conditional_2.png" alt="Sample 2"><p>Seed 182</p></div>
+        <div class="image-container"><img src="part_a/1.6_conditional_3.png" alt="Sample 3"><p>Seed 183</p></div>
+        <div class="image-container"><img src="part_a/1.6_conditional_4.png" alt="Sample 4"><p>Seed 184</p></div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Part 2: Conditional Generation and Guidance</h2>
+
+    <h3>2.1 Classifier-Free Guidance (CFG)</h3>
+    <p>
+        Classifier-free guidance evaluates the model twice at the same x_t and t. One evaluation is with the prompt (v_c) and once with the
+        empty-string embedding (v_u). The guided velocity is
+        \[ v_{cfg} = v_c + w\,(v_c - v_u), \]
+        with \(w = 7\), so \(w = 0\) is
+        ordinary conditional sampling. I checked that w = 0 reproduces the conditional prediction.
+    </p>
+    <p>Five CFG samples with "a high quality photo", w = 7, using the same initial noises as 1.6:</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/2.1_cfg_0.png" alt="CFG sample 0"><p>Sample 0</p></div>
+        <div class="image-container"><img src="part_a/2.1_cfg_1.png" alt="CFG sample 1"><p>Sample 1</p></div>
+        <div class="image-container"><img src="part_a/2.1_cfg_2.png" alt="CFG sample 2"><p>Sample 2</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_a/2.1_cfg_3.png" alt="CFG sample 3"><p>Sample 3</p></div>
+        <div class="image-container"><img src="part_a/2.1_cfg_4.png" alt="CFG sample 4"><p>Sample 4</p></div>
+    </div>
+    <p>The images are clearly more of sharper images with more human like features. It is much easier to realize the facial features are being created. However
+        we do lose diversity in angles and perspectives the photos are beign created. Before there were side shots and side profiles, in the new ones 
+        we just see front portrait style images. 
+    </p>
+</div>
+
+<div class="section">
+    <h2>Part 3: Creative Applications</h2>
+    <p>Throughout this section I use h = 0.02, w = 7, and the empty prompt for the unconditional prediction.</p>
+
+    <h3>3.1 Image-to-Image Editing</h3>
+    <p>
+        Following SDEdit, I add noise to a real image up to a starting time t_start with the forward process, then run the CFG Euler
+        sampler from t_start to 1 with "a high quality photo". A smaller starting time means more noise and a bigger edit, and a larger one keeps more of the original.
+        I used starting times [0.02, 0.04, 0.06, 0.10, 0.14, 0.25, 0.5] and the same noise tensor (seed 180) for every image and starting time.
+    </p>
+
+    <h4>The Campanile</h4>
+    <div class="images">
+        <div class="image-container"><img src="part_a/3.1_edit_campanile.png" alt="Campanile edits"><p>Campanile edits</p></div>
+    </div>
+
+    <h4>Two of my own test images</h4>
+    <div class="images">
+        <div class="image-container"><img src="part_a/3.1_edit_seattle.png" alt="Seattle edits"><p>Kerry Park, Seattle</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_a/3.1_edit_cookie.png" alt="Cookie edits"><p>My dog</p></div>
+    </div>
+    <p>The images get closer and closer to the original as t increases. The shapes/general area the colors are placed forms more as t increases. The Seattle image instantly
+        gets the general background, but the image of my dog that as more excess background struggles a bit more to create the image. 
+    </p>
+    
+    <h4>Editing hand-drawn and web images</h4>
+    <p>
+        The same procedure works well on non-realistic images, because the noising and denoising projects them onto the manifold of natural images.
+        Below are one web image (a watercolor landscape) and two hand-drawn images (created by me), each edited at the same starting times.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/3.1_watercolor_edit.png" alt="Watercolor edits"><p>Web image: watercolor landscape</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_a/3.1_cal_bear.png" alt="Cal bear drawing edits"><p>Hand-drawn image 1: Cal bear</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_a/3.1_edit_tree.png" alt="Tree drawing edits"><p>Hand-drawn image 2: Tree</p></div>
+    </div>
+
+    <h3>3.2 Text-Guided Image Editing</h3>
+    <p>
+        Same procedure as 3.1, but "a high quality photo" is replaced by a prompt describing the desired edit. Small starting times follow the prompt, and large ones follow the original image.
+    </p>
+    <h4>Campanile</h4>
+    <div class="images">
+        <div class="image-container"><img src="part_a/text_edit_campnile.png" alt="Text-guided Campanile edits"><p>Prompt: "a photograph of a skyscraper"</p></div>
+    </div>
+    <h4>Test image 1</h4>
+    <div class="images">
+        <div class="image-container"><img src="part_a/text_edit_my_image_1.png" alt="Text-guided edits of test image 1"><p>Prompt: "a photograph of a city night landscape"</p></div>
+    </div>
+    <h4>Test image 2</h4>
+    <div class="images">
+        <div class="image-container"><img src="part_a/text_edit_my_image_2.png" alt="Text-guided edits of test image 2"><p>Prompt: "a photograph of a white sheep"</p></div>
+    </div>
+    <p>One thing to note is that my dog was kept to be a sheep face, and does not return the to original animal of my dog.</p>
+
+    <h3>3.3 Visual Anagrams</h3>
+    <p>
+        A visual anagram looks like one thing upright and another when rotated 180 degrees. At every Euler step I compute the CFG velocity of the image with prompt A, rotate the image,
+        compute the CFG velocity with prompt B, rotate that velocity back, and average the two:
+        
+        \[ v_1 = v_{cfg}(x_t, t, p_1), \qquad v_2 = F\big(v_{cfg}(F(x_t), t, p_2)\big), \qquad v = \frac{v_1 + v_2}{2}, \]
+        where \(F\) rotates by 180 degrees. One thing to note is that I looped through 6 different seeds in order to find a good output, and the seeds are listed with the image.
+    </p>
+
+    <h4>Illusion 1</h4>
+    <p>Upright prompt: "an oil painting of a deer" &nbsp;|&nbsp; Rotated prompt: "an oil painting of frog" &nbsp;|&nbsp; Seed: 183</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/anagram_0_183.png" alt="Illusion 1 upright"><p>Upright: "an oil painting of a deer"</p></div>
+        <div class="image-container"><img class="rot180" src="part_a/anagram_0_183.png" alt="Illusion 1 rotated 180 degrees"><p>Rotated 180°: "an oil painting of frog"</p></div>
+    </div>
+
+    <h4>Illusion 2</h4>
+    <p>Upright prompt: "a litograph of a vase of flowers" &nbsp;|&nbsp; Rotated prompt: "a litograph of a woman's face" &nbsp;|&nbsp; Seed: 182</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/anagram_1_182.png" alt="Illusion 2 upright"><p>Upright: "a litograph of a vase of flowers"</p></div>
+        <div class="image-container"><img class="rot180" src="part_a/anagram_1_182.png" alt="Illusion 2 rotated 180 degrees"><p>Rotated 180°: "a litograph of a woman's face"</p></div>
+    </div>
+
+    <h3>3.4 Hybrid Images</h3>
+    <p>
+        Adapting Factorized Diffusion, I predict two CFG velocities at the same x_t and t, and keep the low frequencies of prompt A and the high frequencies of prompt B.
+        
+        \[ v = f_{\text{lowpass}}(v_a) + f_{\text{highpass}}(v_b), \qquad f_{\text{highpass}}(v) = v - f_{\text{lowpass}}(v). \]
+        The low-pass is a Gaussian blur with kernel size 265 and sigma 16 at 512 x 512. Prompt A is the distant, low-frequency subject and prompt B
+        is the close-up, high-frequency subject. The composite velocity is used in the Euler update. I also ran through 6 different seeds to find the best output for the image. 
+    </p>
+    <p>Each hybrid is shown at full size (the close-up subject should dominate) and reduced to 64 x 64 (the distant subject should appear).</p>
+
+    <h4>Hybrid 1</h4>
+    <p>Distant prompt: "a lithograph of a large owl's face" &nbsp;|&nbsp; Close prompt: "a lithograph of a autumn forest" &nbsp;|&nbsp; Seed: 181</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/hybrid_0.png" alt="Hybrid 1 full size"><p>Full size</p></div>
+        <div class="image-container small-view"><img src="part_a/hybrid_0.png" alt="Hybrid 1 reduced to 64 x 64"><p>64 x 64</p></div>
+    </div>
+
+    <h4>Hybrid 2</h4>
+    <p>Distant prompt: "a lithograph of a lighthouse" &nbsp;|&nbsp; Close prompt: "a lithograph of a field of flowers" &nbsp;|&nbsp; Seed: 180</p>
+    <div class="images">
+        <div class="image-container"><img src="part_a/hybrid_1.png" alt="Hybrid 2 full size"><p>Full size</p></div>
+        <div class="image-container small-view"><img src="part_a/hybrid_1.png" alt="Hybrid 2 reduced to 64 x 64"><p>64 x 64</p></div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Most Important Thing I Learned</h2>
+</div>
+<p>
+    The most important thing I learned is that one sampler can do many different jobs. The Euler loop never changes. It
+    takes a small step along the predicted velocity, then asks the model again. I also learned how greatly images can change based on a singular
+    seed change. Also Classifier-free guidance made a big difference in quality too, since pushing the prediction away from the
+    unconditional one made the samples look much more like real photos.
+</p>
+    </div>
+</body>
+</html>

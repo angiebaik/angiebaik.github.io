@@ -193,3 +193,24 @@ table.threshold-table th, table.threshold-table td {
     object-fit: contain;
     image-rendering: pixelated;
 }
+pre {
+    background: white;
+    border: 1px solid #f3b6d1;
+    border-radius: 8px;
+    padding: 14px;
+    overflow-x: auto;
+    font-size: 14px;
+}
+
+.rot180 {
+    transform: rotate(180deg);
+}
+
+.small-view {
+    flex: 0 0 auto;
+}
+
+.small-view img {
+    width: 64px;
+    height: 64px;
+}
