@@ -3,37 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CS180 Project 3 Part A: Exploring the Power of Flow Models</title>
+    <title>CS180 Project 3: Flow Matching and Flow Models</title>
     <link rel="stylesheet" href="../style.css">
     <script>window.MathJax = {tex: {inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]]}};</script>
     <script async src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js"></script>
-
 </head>
 <body>
     <div class="container">
         <a class="back" href="../index.html">← Back to Portfolio</a>
-        <h1>Project 3 Part A: Exploring the Power of Flow Models</h1>
+        <h1>Project 3: Exploring the Power of Flow Models</h1>
         <p class="intro">
-            I used the pretrained flow model PixNerd (512 x 512 images) to implement
-            sampling, classifier-free guidance, image editing, visual anagrams, and hybrid images.
-            I did not have to do any model training for Part A. Throughout, time t = 0 is pure noise and
-            t = 1 is a clean image, the Euler step size is h = 0.02, and prompts are turned into
-            embeddings with <code>model.encode</code>. My random seed is 180, excdpt for certain sections like 
-            visual anagrams and hybrid images in order to create a better image generation. 
+            In Part A I used the pretrained flow model PixNerd (512 x 512 images) to implement sampling,
+            classifier-free guidance, image editing, visual anagrams, and hybrid images, with no training.
+            Throughout Part A, t = 0 is pure noise and t = 1 is a clean image, the Euler step size is h = 0.02,
+            and prompts are turned into embeddings with <code>model.encode</code>. My random seed is 180, except where noted
+            for visual anagrams and hybrid images, where I tried several seeds for a better result.
+            In Part B I trained my own UNets on MNIST: a single-step denoiser, a time-conditioned flow matching model,
+            and a class-conditioned one sampled with classifier-free guidance.
         </p>
 
-
 <div class="section">
-    <h2>Part 1: Visualizing Training and Sampling</h2>
+    <h2>Part A, Section 1: Visualizing Training and Sampling</h2>
 
-    <h3>1.1 Constructing Noisy Training Inputs</h3>
+    <h3>A1.1 Constructing Noisy Training Inputs</h3>
     <p>
         The noisy input is a linear interpolation between Gaussian noise \(x_0 = \epsilon \sim \mathcal{N}(0, I)\) and the clean image \(x_1\):
         \[ x_t = (1 - t)\,x_0 + t\,x_1, \qquad t \in [0, 1]. \]
         This is not just adding noise to the image, as noise is also being scaled by \(t\). I checked t = 0 returning
         noise and t = 1 returning the clean image, so I could just reuse one noise tensor.
     </p>
-    <p>My image is a photo from Seattle at Kerry Park, showcasing the Seattle skyline with Mount Rainer in the background. 
+    <p>My image is a photo from Seattle at Kerry Park, showcasing the Seattle skyline with Mount Rainier in the background.
         My original image followed by the noisy versions at t = 0.25, 0.50, and 0.75:</p>
     <div class="images">
         <div class="image-container">
@@ -42,11 +41,11 @@
         </div>
     </div>
 
-    <h3>1.2 Classical Denoising</h3>
+    <h3>A1.2 Classical Denoising</h3>
     <p>
         As a baseline I restored the image amplitude by dividing by t, since
         \[ \frac{x_t}{t} = x_1 + \frac{1 - t}{t}\,\epsilon, \]
-        and then applied a Gaussian blur. I chose the sigmas for the gaussian blur with sigma = 1, 2, 4, 8, 16 and kept the sigma with the lowest
+        and then applied a Gaussian blur. I tried sigma = 1, 2, 4, 8, 16 and kept the sigma with the lowest
         mean squared error against the clean image. Each image shows the noisy input next to its best blurred version.
     </p>
     <div class="images">
@@ -55,7 +54,7 @@
         <div class="image-container"><img src="part_a/1.2_blur_0.75.png" alt="Gaussian blur at t = 0.75"><p>t = 0.75</p></div>
     </div>
 
-    <h3>1.3 One-Step Denoising</h3>
+    <h3>A1.3 One-Step Denoising</h3>
     <p>
         The pretrained model predicts a velocity, not noise. I extrapolate from \(x_t\) to the clean endpoint with
         one prediction, using the embedding \(c\) for "a high quality photo":
@@ -67,13 +66,13 @@
         <div class="image-container"><img src="part_a/1.3_one_step_0.5.png" alt="One-step denoising at t = 0.50"><p>t = 0.50</p></div>
         <div class="image-container"><img src="part_a/1.3_one_step_0.75.png" alt="One-step denoising at t = 0.75"><p>t = 0.75</p></div>
     </div>
-    <p>We can tell from a singular one step that the result is much better than our output in 1.2</p>
+    <p>Even from a single step, the result is much better than the output of 1.2.</p>
 
-    <h3>1.4 Visualizing Velocity</h3>
+    <h3>A1.4 Visualizing Velocity</h3>
     <p>
-        The update the model adds in 1.3 is (1 - t) * v̂. Since I know the clean image, the ground-truth update is
+        The update the model adds in 1.3 is \((1 - t)\,\hat{v}\). Since I know the clean image, the ground-truth update is
         \((1 - t)\,v_{gt} = x_1 - x_t\), where \(v_{gt} = x_1 - \epsilon\). The error map is the per-pixel RMS difference, averaged over the RGB channels:
-        \[ E_t = \sqrt{\operatorname{mean}_{\text{RGB}}\!\left[\big((1 - t)(\hat{v} - v_{gt})\big)^2\right]}. \] 
+        \[ E_t = \sqrt{\operatorname{mean}_{\text{RGB}}\!\left[\big((1 - t)(\hat{v} - v_{gt})\big)^2\right]}. \]
     </p>
     <p>Original image (shown once):</p>
     <div class="images">
@@ -89,16 +88,16 @@
     <div class="images">
         <div class="image-container"><img src="part_a/1.4_velocity_0.75.png" alt="Velocity visualization at t = 0.75"><p>t = 0.75</p></div>
     </div>
-    <p>I can see that the errors is brightest when t = 0.25 and the error lightens as it gets closer to zero like in t = 0.75.</p>
+    <p>The error is brightest at t = 0.25 and gets lighter as t grows, so by t = 0.75 it is the smallest.</p>
 
-    <h3>1.5 Iterative Denoising with Euler Sampling</h3>
+    <h3>A1.5 Iterative Denoising with Euler Sampling</h3>
     <p>
         One-step denoising is inaccurate because the learned velocity changes along the path. Instead I take small Euler steps,
         \(x_{t+h} = x_t + h\, v(x_t, t)\), and recompute the velocity after every update. I used h = 0.02 and shortened the last
         step when needed so the sampler ends exactly at t = 1. Starting from the saved t = 0.50 noisy image, that is 25 Euler updates.
     </p>
     <p>
-        I tested it on a constant velocity field, where the answer is known exactly, starting at t = 0 (meaning we have 50 full steps),
+        I tested it on a constant velocity field, where the answer is known exactly, starting at t = 0 (50 full steps),
         t = 0.5 (25 steps), and t = 0.93 (a shortened final step).
     </p>
     <p>The denoising trajectory: the initial state, every fifth update, and the final image, labeled by time.</p>
@@ -109,20 +108,18 @@
     <div class="images">
         <div class="image-container"><img src="part_a/1.5_comparison.png" alt="Comparison of blur, one-step, and Euler"><p>Original vs. blur vs. one-step vs. Euler</p></div>
     </div>
+    <p>
+        All methods start from the t = 0.50 noisy image. The Gaussian blur removes some of the grain but leaves speckles
+        across the image and removes the details, so the buildings become blurry shapes. One-step denoising gives a significantly better image
+        with the right layout and colors, but the details are still too smooth. The best result is Euler's, with the sharpest details and closest to the original image.
+        It is not perfect, though: around the Space Needle there is a slightly odd structure, most likely because of the fine, closely spaced
+        straight lines there. The mountain in the background is also barely visible.
+    </p>
 
-    <p><p>
-        All methods start with the t = 0.50 noisy image. The gaussian blur removes some of the grain but it leaves speckles that are
-        around the image, removing the details. The buildings are blur shaped. One-step denoising gives us a significantly better image
-        with the right layout and colors, however the specific details are still a little too blurred, very smooth. The best result is Eulers
-        result, with the sharpest details closest to the original image. However it is not perfect, as around the Space Needle there is a slightly
-        odd structure. It is most likely due to the fine details that go around there the small stright lines that are right next to each other. However
-        the mountain in the back is not very existent. 
-    </p></p>
-    
-    <h3>1.6 Sampling from Pure Noise</h3>
+    <h3>A1.6 Sampling from Pure Noise</h3>
     <p>
         Starting from pure Gaussian noise at t = 0 and running the sampler to t = 1 with the prompt "a high quality photo" generates new images.
-        Here are five samples from five different noise seeds (180 to 184), without guidance. I reuse the same five noises in Part 2.
+        Here are five samples from five different noise seeds (180 to 184), without guidance. I reuse the same five noises in Section A2.
     </p>
     <div class="images">
         <div class="image-container"><img src="part_a/1.6_conditional_samples.png" alt="Five conditional samples"><p>Five samples, "a high quality photo", no guidance</p></div>
@@ -137,15 +134,14 @@
 </div>
 
 <div class="section">
-    <h2>Part 2: Conditional Generation and Guidance</h2>
+    <h2>Part A, Section 2: Conditional Generation and Guidance</h2>
 
-    <h3>2.1 Classifier-Free Guidance (CFG)</h3>
+    <h3>A2.1 Classifier-Free Guidance (CFG)</h3>
     <p>
-        Classifier-free guidance evaluates the model twice at the same x_t and t. One evaluation is with the prompt (v_c) and once with the
+        Classifier-free guidance evaluates the model twice at the same x_t and t. One evaluation is with the prompt (v_c) and one with the
         empty-string embedding (v_u). The guided velocity is
         \[ v_{cfg} = v_c + w\,(v_c - v_u), \]
-        with \(w = 7\), so \(w = 0\) is
-        ordinary conditional sampling. I checked that w = 0 reproduces the conditional prediction.
+        with \(w = 7\), so \(w = 0\) is ordinary conditional sampling. I checked that w = 0 reproduces the conditional prediction.
     </p>
     <p>Five CFG samples with "a high quality photo", w = 7, using the same initial noises as 1.6:</p>
     <div class="images">
@@ -157,17 +153,17 @@
         <div class="image-container"><img src="part_a/2.1_cfg_3.png" alt="CFG sample 3"><p>Sample 3</p></div>
         <div class="image-container"><img src="part_a/2.1_cfg_4.png" alt="CFG sample 4"><p>Sample 4</p></div>
     </div>
-    <p>The images are clearly more of sharper images with more human like features. It is much easier to realize the facial features are being created. However
-        we do lose diversity in angles and perspectives the photos are beign created. Before there were side shots and side profiles, in the new ones 
-        we just see front portrait style images. 
+    <p>The images are clearly sharper and have more human-like features, and facial features are much easier to recognize.
+        However, we lose diversity in angles and perspectives. Before there were side shots and side profiles; in the guided ones
+        we mostly see front-facing portrait-style images.
     </p>
 </div>
 
 <div class="section">
-    <h2>Part 3: Creative Applications</h2>
+    <h2>Part A, Section 3: Creative Applications</h2>
     <p>Throughout this section I use h = 0.02, w = 7, and the empty prompt for the unconditional prediction.</p>
 
-    <h3>3.1 Image-to-Image Editing</h3>
+    <h3>A3.1 Image-to-Image Editing</h3>
     <p>
         Following SDEdit, I add noise to a real image up to a starting time t_start with the forward process, then run the CFG Euler
         sampler from t_start to 1 with "a high quality photo". A smaller starting time means more noise and a bigger edit, and a larger one keeps more of the original.
@@ -186,10 +182,10 @@
     <div class="images">
         <div class="image-container"><img src="part_a/3.1_edit_cookie.png" alt="Cookie edits"><p>My dog</p></div>
     </div>
-    <p>The images get closer and closer to the original as t increases. The shapes/general area the colors are placed forms more as t increases. The Seattle image instantly
-        gets the general background, but the image of my dog that as more excess background struggles a bit more to create the image. 
+    <p>The edits get closer to the original as t_start increases, and the shapes and colors form more clearly. The Seattle image quickly
+        gets the general background, but my dog photo, which has more extra background, struggles more to recreate the image.
     </p>
-    
+
     <h4>Editing hand-drawn and web images</h4>
     <p>
         The same procedure works well on non-realistic images, because the noising and denoising projects them onto the manifold of natural images.
@@ -205,7 +201,7 @@
         <div class="image-container"><img src="part_a/3.1_edit_tree.png" alt="Tree drawing edits"><p>Hand-drawn image 2: Tree</p></div>
     </div>
 
-    <h3>3.2 Text-Guided Image Editing</h3>
+    <h3>A3.2 Text-Guided Image Editing</h3>
     <p>
         Same procedure as 3.1, but "a high quality photo" is replaced by a prompt describing the desired edit. Small starting times follow the prompt, and large ones follow the original image.
     </p>
@@ -221,15 +217,14 @@
     <div class="images">
         <div class="image-container"><img src="part_a/text_edit_my_image_2.png" alt="Text-guided edits of test image 2"><p>Prompt: "a photograph of a white sheep"</p></div>
     </div>
-    <p>One thing to note is that my dog was kept to be a sheep face, and does not return the to original animal of my dog.</p>
+    <p>One thing to note is that my dog turned into a sheep face and does not return to the original animal.</p>
 
-    <h3>3.3 Visual Anagrams</h3>
+    <h3>A3.3 Visual Anagrams</h3>
     <p>
         A visual anagram looks like one thing upright and another when rotated 180 degrees. At every Euler step I compute the CFG velocity of the image with prompt A, rotate the image,
         compute the CFG velocity with prompt B, rotate that velocity back, and average the two:
-        
         \[ v_1 = v_{cfg}(x_t, t, p_1), \qquad v_2 = F\big(v_{cfg}(F(x_t), t, p_2)\big), \qquad v = \frac{v_1 + v_2}{2}, \]
-        where \(F\) rotates by 180 degrees. One thing to note is that I looped through 6 different seeds in order to find a good output, and the seeds are listed with the image.
+        where \(F\) rotates by 180 degrees. I looped through 6 different seeds to find a good output, and the seed is listed with each image.
     </p>
 
     <h4>Illusion 1</h4>
@@ -246,13 +241,12 @@
         <div class="image-container"><img class="rot180" src="part_a/anagram_1_182.png" alt="Illusion 2 rotated 180 degrees"><p>Rotated 180°: "a litograph of a woman's face"</p></div>
     </div>
 
-    <h3>3.4 Hybrid Images</h3>
+    <h3>A3.4 Hybrid Images</h3>
     <p>
-        Adapting Factorized Diffusion, I predict two CFG velocities at the same x_t and t, and keep the low frequencies of prompt A and the high frequencies of prompt B.
-        
+        Adapting Factorized Diffusion, I predict two CFG velocities at the same x_t and t, and keep the low frequencies of prompt A and the high frequencies of prompt B:
         \[ v = f_{\text{lowpass}}(v_a) + f_{\text{highpass}}(v_b), \qquad f_{\text{highpass}}(v) = v - f_{\text{lowpass}}(v). \]
         The low-pass is a Gaussian blur with kernel size 265 and sigma 16 at 512 x 512. Prompt A is the distant, low-frequency subject and prompt B
-        is the close-up, high-frequency subject. The composite velocity is used in the Euler update. I also ran through 6 different seeds to find the best output for the image. 
+        is the close-up, high-frequency subject. The composite velocity is used in the Euler update. I also ran 6 different seeds to find the best output for each image.
     </p>
     <p>Each hybrid is shown at full size (the close-up subject should dominate) and reduced to 64 x 64 (the distant subject should appear).</p>
 
@@ -272,14 +266,150 @@
 </div>
 
 <div class="section">
-    <h2>Most Important Thing I Learned</h2>
+    <h2>Part B, Section 1: Training a Single-Step Denoising UNet</h2>
+
+    <h3>B1.2 Using the UNet to Train a Denoiser</h3>
+    <p>
+        The denoiser takes a noisy image \(z = x + \sigma\,\epsilon\) with \(\epsilon \sim \mathcal{N}(0, I)\) and is trained
+        to output the clean digit \(x\) with an L2 loss. Here is the noising process for several values of \(\sigma\), on one MNIST digit.
+        Higher the \(\sigma\) is noisier the image is.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/noising_process.png" alt="Noising process for increasing sigma"><p>Noising process, σ from 0.0 to 1.0</p></div>
+    </div>
+
+    <h4>B1.2.1 Training</h4>
+    <p>
+        I trained the denoiser on the MNIST training set (shuffled) with σ = 0.5, batch size 256, hidden dimension D = 128,
+        Adam with learning rate 1e-4, for 5 epochs. New noise is drawn for every batch.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/denoise_loss.png" alt="Denoiser training loss"><p>Training loss (every iteration, with a 100-step moving average)</p></div>
+    </div>
+    <p>Test-set results with σ = 0.5 after epoch 1 and epoch 5 (top row: noisy input, bottom row: denoised output):</p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/denoise_epoch_1.png" alt="Denoising results after epoch 1"><p>After epoch 1</p></div>
+        <div class="image-container"><img src="part_b/denoise_epoch_5.png" alt="Denoising results after epoch 5"><p>After epoch 5</p></div>
+    </div>
+
+    <h4>B1.2.2 Out-of-Distribution Testing</h4>
+    <p>
+        The model was only trained at σ = 0.5. Here is the same test digit noised with different values of σ and denoised by the trained model
+        (top row: noisy, bottom row: denoised, σ = 0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0).
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/1.2.2_ood_testing.png" alt="Out-of-distribution denoising"><p>σ = 0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0</p></div>
+    </div>
+    <p>
+        The denoiser works well for every σ from 0.0 up to about 0.6. At σ = 0.0 it returns the clean 7, and for σ = 0.2 to 0.6 the
+        output is a clean, correctly shaped 7 even though the noisy inputs look more and more scrambled. At σ = 0.8 the output starts to break down as the 
+        7 gets thicker, the strokes are distorted, and stray marks show up around it.
+    </p>
+
+    <h4>B1.2.3 Denoising Pure Noise</h4>
+    <p>
+        Next I trained a fresh UNet (D = 128, Adam, learning rate 1e-4, batch size 256, 5 epochs) where the input is pure Gaussian noise
+        and the target is still a clean digit.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/pure_noise_loss.png" alt="Pure noise training loss"><p>Training loss</p></div>
+    </div>
+    <p>Samples on pure noise after epoch 1 and epoch 5 (top row: input noise, bottom row: output):</p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/pure_noise_epoch_1.png" alt="Pure noise outputs after epoch 1"><p>After epoch 1</p></div>
+        <div class="image-container"><img src="part_b/pure_noise_epoch_5.png" alt="Pure noise outputs after epoch 5"><p>After epoch 5</p></div>
+    </div>
+    <p>
+        The outputs all look like nearly the same blurry digit-like blob, no matter what the input noise was. This happens
+        because the noise carries no information about which digit it came from, so the model cannot do better than predicting
+        the same thing for every input. With an L2 loss, the output that minimizes the expected error is the mean of the training distribution, which is the average image of all MNIST digits.
+        The model learns to output that average, which is why we see a smooth, blurry shape that is a mix of many digits.
+    </p>
+    <p>
+        The outputs look almost the same at epoch 1 and epoch 5. One blurry, centered blob that resembles an average of many digits, mainly 0 and 8 like shape though, identical for every input noise.
+        By epoch 5 the blob is a little smoother and slightly better defined, with fewer speckles, but it does not turn into any particular digit.
+    </p>
 </div>
-<p>
-    The most important thing I learned is that one sampler can do many different jobs. The Euler loop never changes. It
-    takes a small step along the predicted velocity, then asks the model again. I also learned how greatly images can change based on a singular
-    seed change. Also Classifier-free guidance made a big difference in quality too, since pushing the prediction away from the
-    unconditional one made the samples look much more like real photos.
-</p>
+
+<div class="section">
+    <h2>Part B, Section 2: Training a Flow Matching Model</h2>
+
+    <h3>B2.2 Training the Time-Conditioned UNet</h3>
+    <p>
+        The model takes a noisy image and a time \(t \in [0, 1]\) and predicts the velocity \(x_1 - x_0\). Training follows the flow matching
+        algorithm: draw \(x_0 \sim \mathcal{N}(0, I)\) and \(t \sim U(0, 1)\), form
+        \(x_t = (1 - t)\,x_0 + t\,x_1\), and regress the UNet output onto \(x_1 - x_0\). I used batch size 64, D = 64,
+        Adam with initial learning rate 1e-2, and an exponential learning rate decay with
+        \(\gamma = 0.1^{1/\text{num_epochs}}\), calling <code>scheduler.step()</code> once per epoch, for 10 epochs.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/time_fm_loss.png" alt="Time-conditioned training loss"><p>Time-conditioned training loss</p></div>
+    </div>
+
+    <h3>B2.3 Sampling from the Time-Conditioned UNet</h3>
+    <p>Samples after 1, 5 and 10 epochs of training:</p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/2.3_time_fm_epoch_1.png" alt="Time-conditioned samples, epoch 1"><p>Epoch 1</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_b/2.3_time_fm_epoch_5.png" alt="Time-conditioned samples, epoch 5"><p>Epoch 5</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_b/2.3_time_fm_epoch_10.png" alt="Time-conditioned samples, epoch 10"><p>Epoch 10</p></div>
+    </div>
+    <p>The samples improve from epoch 1 to epoch 10. At first it looks like blobs/strokes with no order. However as we go into higher epoch, the model is able to generate
+        images that look more like numbers, like the number 4, 2, 0, 5, 9, and 7. However there are some images where the number is not clear.</p>
+
+    <h3>B2.5 Training the Class-Conditioned UNet</h3>
+    <p>
+        The class-conditioned UNet also takes a one-hot class vector, which is set to zero 10% of the time during training so the same model learns an unconditional prediction
+        for classifier-free guidance. Settings are the same as 2.2: batch size 64, D = 64, Adam with initial learning rate 1e-2,
+        exponential decay with the same \(\gamma\), 10 epochs.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/class_loss.png" alt="Class-conditioned training loss"><p>Class-conditioned training loss</p></div>
+    </div>
+    <p>The loss drops sharply in the first few hundred steps, then levels off at about 0.1 for the rest of training.</p>
+
+    <h3>B2.6 Sampling from the Class-Conditioned UNet</h3>
+    <p>
+        I sample with 300 Euler steps and classifier-free guidance with \(\gamma = 5.0\):
+        \(u = u_{\text{uncond}} + \gamma\,(u_{\text{cond}} - u_{\text{uncond}})\).
+        Each grid shows four samples of each digit 0 to 9, with the same random seed so the results can be compared.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/2.6_class_fm_epoch_1.png" alt="Class-conditioned samples, epoch 1"><p>Epoch 1</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_b/2.6_class_fm_epoch_5.png" alt="Class-conditioned samples, epoch 5"><p>Epoch 5</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_b/2.6_class_fm_epoch_10.png" alt="Class-conditioned samples, epoch 10"><p>Epoch 10</p></div>
+    </div>
+    <p>Between epochs we can clearly see the numbers being better, with a significant jump from epoch 1 to 5. The numbers are more defined with more sure lines
+        rather than random stretches. Furthermore we see that the digits match their respecitve classes. 
+    </p>
+
+    <h4>Without the Learning Rate Scheduler</h4>
+    <p>
+        I trained a second class-conditioned model with the scheduler removed and a constant Adam learning rate of 1e-3, with everything else the same.
+        With the scheduler, the learning rate started at 1e-2 and went down to about 1e-3 by the end. A constant 1e-2 would keep taking large steps for the entire run,
+        so I lowered the learning rate from 1e-2 to a constant 1e-3, the value the scheduler ends at.
+    </p>
+    <div class="images">
+        <div class="image-container"><img src="part_b/class_no_sched_loss.png" alt="No-scheduler training loss"><p>Training loss without a scheduler</p></div>
+    </div>
+    <div class="images">
+        <div class="image-container"><img src="part_b/2.6_class_fm_no_sched.png" alt="No-scheduler samples after 10 epochs"><p>Samples after 10 epochs, no scheduler</p></div>
+    </div>
+    <p>
+        The no-scheduler loss starts lower, at about 1.3 compared with about 9.5 for the scheduled run, because the learning rate is smaller, and both end near 0.1.
+        Its curve stays noisier because the learning rate never goes down. The no-scheduler samples look just as good as the scheduled model's epoch 10 samples. All 
+        the digits match their respective classes, with clean strokes. The two images are very simliar with a small difference of a speck in scheduled, so a constant 
+        learning rate of 1e-3 was enough to replace the scheduler in this setting.
+    </p>
+</div>
+
     </div>
 </body>
 </html>
