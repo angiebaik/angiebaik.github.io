@@ -470,14 +470,14 @@ $$
     <li><b>Warping:</b> The center image remains unchanged, while the side image is transformed using
         bilinear inverse warping. The warping function also returns the offset of the
         warped image's top-left corner.</li>
-    <li><b>Canvas size:</b> The smallest canvas that fits both the center image at (0, 0) and the
+    <li><b>Output size:</b> The smallest output that fits both the center image at (0, 0) and the
         warped side image at its offset is calculated using the minimum and maximum coordinates
         of their edges.</li>
     <li><b>Weights:</b> Each image is assigned a weight map with a value of 1 at the center that
         decreases linearly to 0 at the edges. The side image's weight map is warped using the
         same H to keep the weights aligned with the image pixels.</li>
     <li><b>Blending:</b> Instead of having one image overwrite the other and create a visible seam,
-        weighted averaging is used to combine the images. For each pixel on the canvas, the
+        weighted averaging is used to combine the images. For each pixel on the output, the
         pixel colors are multiplied by their corresponding weights and added together. The result
         is divided by the sum of the weights. In overlapping regions, pixels closer to the center
         of an image receive more weight, creating a smoother transition. Regions covered by only
