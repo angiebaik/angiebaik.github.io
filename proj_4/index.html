@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project 4A: Image Warping and Mosaicing</title>
+<link rel="stylesheet" href="../style.css">
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<style>
+  .matrix { overflow-x: auto; font-size: 14px; background: white; border: 1px solid #f3b6d1; border-radius: 8px; padding: 10px; }
+  ol, ul { font-size: 18px; line-height: 1.5; color: #885c7a; }
+  li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<a class="back" href="../index.html">&larr; Back to projects</a>
+
+<h1>Project 4A: Image Warping and Mosaicing</h1>
+
+<div class="intro">
+  <p>
+    In this project I took sets of photos by rotating my camera around a fixed point (just rotating the camera around while I stood stationary), 
+    computed the homographies between them from hand-clicked correspondences, wrote my own inverse warping with nearest neighbor and bilinear 
+    interpolation, rectified images of rectangular objects, and blended image pairs into mosaics using weighted averaging.
+  </p>
+</div>
+
+<div class="section">
+  <h2>A.1: Shoot the Pictures</h2>
+  <p>
+    I shot each set by standing in one spot and then rotating the camera to the left between shots, keeping the center of projection fixed. This way
+    the images are related by projective transformation, allowing us to combine them into a mosaic. Each pair overlap a great bit so that there are
+    shared features between the two photos. 
+  </p>
+
+  <h3>Set 1: Downtown</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/downtown_left.jpg" alt="Downtown left">
+      <p>Left</p>
+    </div>
+    <div class="image-container">
+      <img src="images/downtown_center.jpg" alt="Downtown center">
+      <p>Center</p>
+    </div>
+  </div>
+
+  <h3>Set 2: Sodoi</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/sd_left.jpg" alt="Sodoi left">
+      <p>Left</p>
+    </div>
+    <div class="image-container">
+      <img src="images/sd_center.jpg" alt="Sodoi center">
+      <p>Center</p>
+    </div>
+  </div>
+
+  <h3>Set 3: Library</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/library_left.jpg" alt="Library left">
+      <p>Left</p>
+    </div>
+    <div class="image-container">
+      <img src="images/library_center.jpg" alt="Library center">
+      <p>Center</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>A.2: Recover Homographies</h2>
+  <p>
+    A homography will map a point in one image (x, y) to another point (x′, y′) in another through a 3x3 matrix H. Writing the point as (x, y, 1) and 
+    multiplying by H gives (wx′, wy′, w), and dividing by w gives the final point. Since H has 9 entries and does not get effected by scaling, I fixed
+    the bottom-right entry to 1, leaving 8 unknowns h1 to h8. 
+  </p>
+  <p>
+    Multiplying out the division and rearranging makes the equations linear in the unknowns. Each
+    correspondence gives two equations:
+  </p>
+<pre>
+x·h1 + y·h2 + h3 − x·x′·h7 − y·x′·h8 = x′
+x·h4 + y·h5 + h6 − x·y′·h7 − y·y′·h8 = y′
+</pre>
+  <p>
+    For all n pairs of points, I combined the equations into a system <b>Ah = b</b>, where A is a 2n × 8 matrix and b contains the x′ and 
+    y′ coordinates. Although 4 points are enough to solve the system, small errors from selecting the points can affect the result. To make the 
+    homography more accurate, I used more than 4 points and solved the system using least squares with the normal equations.
+  </p>
+<pre>
+h = (AᵀA)⁻¹ Aᵀ b
+</pre>
+  <p>
+    Finally, I set the last value to 1 and reshaped the 9 values into the homography matrix H. I used the correspondence tool to select 
+    matching points, near a certain identifiable feature like a hole in the barrel, or a corner of a bookcase/window.
+  </p>
+
+  <h3>Downtown</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_2/downtown_correspondences.jpg" alt="Downtown correspondences">
+      <p>Correspondences</p>
+    </div>
+  </div>
+  <p><b>System of equations (A and b):</b></p>
+<div class="matrix">
+$$
+\underbrace{\begin{bmatrix}
+2191 &amp; 2695 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -199381 &amp; -245245 \\
+0 &amp; 0 &amp; 0 &amp; 2191 &amp; 2695 &amp; 1 &amp; -5784240 &amp; -7114800 \\
+3015 &amp; 2465 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -3099420 &amp; -2534020 \\
+0 &amp; 0 &amp; 0 &amp; 3015 &amp; 2465 &amp; 1 &amp; -7232985 &amp; -5913535 \\
+2879 &amp; 2818 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -2602616 &amp; -2547472 \\
+0 &amp; 0 &amp; 0 &amp; 2879 &amp; 2818 &amp; 1 &amp; -7954677 &amp; -7786134 \\
+3872 &amp; 2609 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -7054784 &amp; -4753598 \\
+0 &amp; 0 &amp; 0 &amp; 3872 &amp; 2609 &amp; 1 &amp; -9865856 &amp; -6647732 \\
+3038 &amp; 4510 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -3375218 &amp; -5010610 \\
+0 &amp; 0 &amp; 0 &amp; 3038 &amp; 4510 &amp; 1 &amp; -13516062 &amp; -20064990 \\
+3213 &amp; 2849 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -3990546 &amp; -3538458 \\
+0 &amp; 0 &amp; 0 &amp; 3213 &amp; 2849 &amp; 1 &amp; -8951418 &amp; -7937314 \\
+2659 &amp; 3648 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1829392 &amp; -2509824 \\
+0 &amp; 0 &amp; 0 &amp; 2659 &amp; 3648 &amp; 1 &amp; -9692055 &amp; -13296960 \\
+3635 &amp; 4078 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -6023195 &amp; -6757246 \\
+0 &amp; 0 &amp; 0 &amp; 3635 &amp; 4078 &amp; 1 &amp; -14252835 &amp; -15989838 \\
+3258 &amp; 2491 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -4144176 &amp; -3168552 \\
+0 &amp; 0 &amp; 0 &amp; 3258 &amp; 2491 &amp; 1 &amp; -7884360 &amp; -6028220 \\
+2383 &amp; 2636 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -779241 &amp; -861972 \\
+0 &amp; 0 &amp; 0 &amp; 2383 &amp; 2636 &amp; 1 &amp; -6119544 &amp; -6769248 \\
+3021 &amp; 2734 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -3166008 &amp; -2865232 \\
+0 &amp; 0 &amp; 0 &amp; 3021 &amp; 2734 &amp; 1 &amp; -8072112 &amp; -7305248
+\end{bmatrix}}_{A}
+\underbrace{\begin{bmatrix} h_1 \\ h_2 \\ h_3 \\ h_4 \\ h_5 \\ h_6 \\ h_7 \\ h_8 \end{bmatrix}}_{\mathbf{h}}
+=
+\underbrace{\begin{bmatrix}
+91 \\
+2640 \\
+1028 \\
+2399 \\
+904 \\
+2763 \\
+1822 \\
+2548 \\
+1111 \\
+4449 \\
+1242 \\
+2786 \\
+688 \\
+3645 \\
+1657 \\
+3921 \\
+1272 \\
+2420 \\
+327 \\
+2568 \\
+1048 \\
+2672
+\end{bmatrix}}_{\mathbf{b}}
+$$
+</div>
+  <p><b>Recovered H:</b></p>
+<div class="matrix">
+$$
+H =
+\begin{bmatrix}
+2.006 &amp; 0.06964 &amp; -4441.54 \\
+0.5842 &amp; 1.815 &amp; -2101.05 \\
+2.264 \times 10^{-4} &amp; 1.728 \times 10^{-5} &amp; 1
+\end{bmatrix}
+$$
+</div>
+
+  <h3>Sodoi</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_2/sd_correspondences.jpg" alt="Sodoi correspondences">
+      <p>Correspondences</p>
+    </div>
+  </div>
+  <p><b>System of equations (A and b):</b></p>
+<div class="matrix">
+$$
+\underbrace{\begin{bmatrix}
+2616 &amp; 5038 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -2265456 &amp; -4362908 \\
+0 &amp; 0 &amp; 0 &amp; 2616 &amp; 5038 &amp; 1 &amp; -13529952 &amp; -26056536 \\
+4172 &amp; 3144 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -9724932 &amp; -7328664 \\
+0 &amp; 0 &amp; 0 &amp; 4172 &amp; 3144 &amp; 1 &amp; -12995780 &amp; -9793560 \\
+3334 &amp; 1416 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -5434420 &amp; -2308080 \\
+0 &amp; 0 &amp; 0 &amp; 3334 &amp; 1416 &amp; 1 &amp; -4817630 &amp; -2046120 \\
+2721 &amp; 1934 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -2748210 &amp; -1953340 \\
+0 &amp; 0 &amp; 0 &amp; 2721 &amp; 1934 &amp; 1 &amp; -5082828 &amp; -3612712 \\
+2853 &amp; 3476 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -3266685 &amp; -3980020 \\
+0 &amp; 0 &amp; 0 &amp; 2853 &amp; 3476 &amp; 1 &amp; -9879939 &amp; -12037388 \\
+2365 &amp; 2938 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1414270 &amp; -1756924 \\
+0 &amp; 0 &amp; 0 &amp; 2365 &amp; 2938 &amp; 1 &amp; -6901070 &amp; -8573084 \\
+4020 &amp; 661 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -9040980 &amp; -1486589 \\
+0 &amp; 0 &amp; 0 &amp; 4020 &amp; 661 &amp; 1 &amp; -3429060 &amp; -563833 \\
+3594 &amp; 2579 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -6670464 &amp; -4786624 \\
+0 &amp; 0 &amp; 0 &amp; 3594 &amp; 2579 &amp; 1 &amp; -9312054 &amp; -6682189 \\
+2072 &amp; 3965 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -464128 &amp; -888160 \\
+0 &amp; 0 &amp; 0 &amp; 2072 &amp; 3965 &amp; 1 &amp; -8401960 &amp; -16078075 \\
+2432 &amp; 4576 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1554048 &amp; -2924064 \\
+0 &amp; 0 &amp; 0 &amp; 2432 &amp; 4576 &amp; 1 &amp; -11367168 &amp; -21388224 \\
+3782 &amp; 4692 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -7518616 &amp; -9327696 \\
+0 &amp; 0 &amp; 0 &amp; 3782 &amp; 4692 &amp; 1 &amp; -17283740 &amp; -21442440 \\
+4030 &amp; 3059 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -8930480 &amp; -6778744 \\
+0 &amp; 0 &amp; 0 &amp; 4030 &amp; 3059 &amp; 1 &amp; -12303590 &amp; -9339127 \\
+3507 &amp; 3736 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -6168813 &amp; -6571624 \\
+0 &amp; 0 &amp; 0 &amp; 3507 &amp; 3736 &amp; 1 &amp; -12947844 &amp; -13793312 \\
+2316 &amp; 1601 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1303908 &amp; -901363 \\
+0 &amp; 0 &amp; 0 &amp; 2316 &amp; 1601 &amp; 1 &amp; -3390624 &amp; -2343864
+\end{bmatrix}}_{A}
+\underbrace{\begin{bmatrix} h_1 \\ h_2 \\ h_3 \\ h_4 \\ h_5 \\ h_6 \\ h_7 \\ h_8 \end{bmatrix}}_{\mathbf{h}}
+=
+\underbrace{\begin{bmatrix}
+866 \\
+5172 \\
+2331 \\
+3115 \\
+1630 \\
+1445 \\
+1010 \\
+1868 \\
+1145 \\
+3463 \\
+598 \\
+2918 \\
+2249 \\
+853 \\
+1856 \\
+2591 \\
+224 \\
+4055 \\
+639 \\
+4674 \\
+1988 \\
+4570 \\
+2216 \\
+3053 \\
+1759 \\
+3692 \\
+563 \\
+1464
+\end{bmatrix}}_{\mathbf{b}}
+$$
+</div>
+  <p><b>Recovered H:</b></p>
+<div class="matrix">
+$$
+H =
+\begin{bmatrix}
+1.652 &amp; -0.02647 &amp; -3018.21 \\
+0.4609 &amp; 1.453 &amp; -1431.29 \\
+1.521 \times 10^{-4} &amp; -3.822 \times 10^{-6} &amp; 1
+\end{bmatrix}
+$$
+</div>
+
+  <h3>Library</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_2/library_correspondences.jpg" alt="Library correspondences">
+      <p>Correspondences</p>
+    </div>
+  </div>
+  <p><b>System of equations (A and b):</b></p>
+<div class="matrix">
+$$
+\underbrace{\begin{bmatrix}
+3508 &amp; 1745 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -5335668 &amp; -2654145 \\
+0 &amp; 0 &amp; 0 &amp; 3508 &amp; 1745 &amp; 1 &amp; -6475768 &amp; -3221270 \\
+3385 &amp; 4182 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -5212900 &amp; -6440280 \\
+0 &amp; 0 &amp; 0 &amp; 3385 &amp; 4182 &amp; 1 &amp; -13858190 &amp; -17121108 \\
+2485 &amp; 3949 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1580460 &amp; -2511564 \\
+0 &amp; 0 &amp; 0 &amp; 2485 &amp; 3949 &amp; 1 &amp; -10071705 &amp; -16005297 \\
+2495 &amp; 4315 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1656680 &amp; -2865160 \\
+0 &amp; 0 &amp; 0 &amp; 2495 &amp; 4315 &amp; 1 &amp; -11115225 &amp; -19223325 \\
+3113 &amp; 5393 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -4211889 &amp; -7296729 \\
+0 &amp; 0 &amp; 0 &amp; 3113 &amp; 5393 &amp; 1 &amp; -16576725 &amp; -28717725 \\
+2406 &amp; 4455 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1373826 &amp; -2543805 \\
+0 &amp; 0 &amp; 0 &amp; 2406 &amp; 4455 &amp; 1 &amp; -11048352 &amp; -20457360 \\
+3114 &amp; 2443 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -3774168 &amp; -2960916 \\
+0 &amp; 0 &amp; 0 &amp; 3114 &amp; 2443 &amp; 1 &amp; -7722720 &amp; -6058640 \\
+2539 &amp; 2235 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1510705 &amp; -1329825 \\
+0 &amp; 0 &amp; 0 &amp; 2539 &amp; 2235 &amp; 1 &amp; -5750835 &amp; -5062275 \\
+2309 &amp; 3070 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -886656 &amp; -1178880 \\
+0 &amp; 0 &amp; 0 &amp; 2309 &amp; 3070 &amp; 1 &amp; -7284895 &amp; -9685850 \\
+3066 &amp; 3036 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -3670002 &amp; -3634092 \\
+0 &amp; 0 &amp; 0 &amp; 3066 &amp; 3036 &amp; 1 &amp; -9369696 &amp; -9278016 \\
+3580 &amp; 198 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -5341360 &amp; -295416 \\
+0 &amp; 0 &amp; 0 &amp; 3580 &amp; 198 &amp; 1 &amp; -1485700 &amp; -82170 \\
+2606 &amp; 3243 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -1920622 &amp; -2390091 \\
+0 &amp; 0 &amp; 0 &amp; 2606 &amp; 3243 &amp; 1 &amp; -8615436 &amp; -10721358 \\
+2309 &amp; 1975 &amp; 1 &amp; 0 &amp; 0 &amp; 0 &amp; -715790 &amp; -612250 \\
+0 &amp; 0 &amp; 0 &amp; 2309 &amp; 1975 &amp; 1 &amp; -4571820 &amp; -3910500
+\end{bmatrix}}_{A}
+\underbrace{\begin{bmatrix} h_1 \\ h_2 \\ h_3 \\ h_4 \\ h_5 \\ h_6 \\ h_7 \\ h_8 \end{bmatrix}}_{\mathbf{h}}
+=
+\underbrace{\begin{bmatrix}
+1521 \\
+1846 \\
+1540 \\
+4094 \\
+636 \\
+4053 \\
+664 \\
+4455 \\
+1353 \\
+5325 \\
+571 \\
+4592 \\
+1212 \\
+2480 \\
+595 \\
+2265 \\
+384 \\
+3155 \\
+1197 \\
+3056 \\
+1492 \\
+415 \\
+737 \\
+3306 \\
+310 \\
+1980
+\end{bmatrix}}_{\mathbf{b}}
+$$
+</div>
+  <p><b>Recovered H:</b></p>
+<div class="matrix">
+$$
+H =
+\begin{bmatrix}
+1.794 &amp; 0.09169 &amp; -3862.26 \\
+0.4897 &amp; 1.576 &amp; -1344.26 \\
+1.994 \times 10^{-4} &amp; 1.966 \times 10^{-6} &amp; 1
+\end{bmatrix}
+$$
+</div>
+</div>
+
+<div class="section">
+  <h2>A.3: Warp the Images</h2>
+  <p>
+    I implemented <code>warpImageNearestNeighbor(im, H)</code> and <code>warpImageBilinear(im, H)</code>
+    using inverse warping. Forward warping/mapping (placing each input pixel through H) leaves gaps because the pixels will land at a fractional point
+    and spread apart. Therefore I did inverse mapping, which places every pixel in the output through 
+    pixels land at fractional positions and spread apart. Instead, for every pixel in the output, it send it backwards through H⁻¹ to find where it came
+    from in the original image. So every output pixel will get a value. 
+  </p>
+  <p>Both functions follow the same steps:</p>
+    <ol>
+    <li><b>Output size:</b> The 4 corners of the input image are transformed using H. Since a homography
+        keeps straight lines straight, the smallest bounding box containing the transformed corners
+        determines the output size.</li>
+    <li><b>Inverse mapping:</b> For every pixel in the output image, H⁻¹ is applied and the result
+        is divided by w to find the corresponding source location in the original image.</li>
+    <li><b>Interpolation:</b> The pixel color at the source location is calculated using one of
+        the two interpolation methods described below.</li>
+    <li><b>Empty pixels:</b> If the source location falls outside the original image, the output
+        pixel is left black.</li>
+    </ol>
+    <p>
+      Each integer coordinate represents the center of a pixel, so (0, 0) corresponds to the center
+      of the first pixel.
+    </p>
+    <ul>
+      <li><b>Nearest neighbor:</b> The source location is rounded to the nearest pixel, and its color
+          is copied to the output image.</li>
+      <li><b>Bilinear:</b> The 4 pixels surrounding the source location are used to calculate the
+          output color. With dx and dy representing the fractional distances from the top-left pixel,
+          the top two pixels are blended using dx, followed by the bottom two pixels. These two
+          results are then blended using dy, giving closer pixels more weight.</li>
+    </ul>
+  <h3>Rectification</h3>
+  <p>
+    To test the warping, I rectified photos of rectangular objects taken at an angle. Since there's
+    only one image, I clicked the 4 corners of the object as <code>im1_pts</code>, and defined <code>im2_pts</code> by hand as a rectangle with
+    the object's estimated proportions. Computing H from these and warping changes the object as if seen straight and not from the side.
+  </p>
+
+  <h3>Calendar poster</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/rectified_calendar.jpg" alt="Rectified calendar">
+      <p>Original, nearest neighbor, and bilinear</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/rectified_crop_calendar.jpg" alt="Rectified calendar, cropped">
+      <p>Cropped to the calendar: nearest neighbor and bilinear</p>
+    </div>
+  </div>
+
+  <h3>Gateway sign</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/rectified_gateway_sign.jpg" alt="Rectified gateway sign">
+      <p>Original, nearest neighbor, and bilinear</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/rectified_crop_gateway_sign.jpg" alt="Rectified gateway sign, cropped">
+      <p>Cropped to the sign: nearest neighbor and bilinear</p>
+    </div>
+  </div>
+
+  <h3>Framed picture</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/rectified_picture.jpg" alt="Rectified framed picture">
+      <p>Original, nearest neighbor, and bilinear</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/rectified_crop_picture.jpg" alt="Rectified framed picture, cropped">
+      <p>Cropped to the frame: nearest neighbor and bilinear</p>
+    </div>
+  </div>
+
+  <h3>Parking sign</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/rectified_parking.jpg" alt="Rectified parking sign">
+      <p>Original, nearest neighbor, and bilinear</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/rectified_crop_parking.jpg" alt="Rectified parking sign, cropped">
+      <p>Cropped to the sign: nearest neighbor and bilinear</p>
+    </div>
+  </div>
+
+  <h3>Zoomed-in comparison</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_3/zoom_nn.png" alt="Nearest neighbor zoom" style="image-rendering: pixelated;">
+      <p>Nearest neighbor (zoomed)</p>
+    </div>
+    <div class="image-container">
+      <img src="images/a_3/zoom_bilinear.png" alt="Bilinear zoom" style="image-rendering: pixelated;">
+      <p>Bilinear (zoomed)</p>
+    </div>
+  </div>
+  <p>The same small patch of the parking sign, enlarged 6×.</p>
+
+  <h3>Speed vs. quality</h3>
+  <p>
+    Nearest neighbor is faster, since it reads one pixel per output pixel. Bilinear reads four and
+    does the blending math, so it takes longer. However, bilinear gives a smoother result compared to nearest neighbor, which produces a more jagged
+    result, especially around text and anything with straight lines. Bilinear makes it more blurry due to the smoothing.
+  </p>
+</div>
+
+<div class="section">
+  <h2>A.4: Blend the Images into a Mosaic</h2>
+
+  <h3>Procedure</h3>
+    <ol>
+    <li><b>Homography:</b> For each pair of images, H is computed using the clicked correspondences
+        from A.2 to map the side image into the center image's coordinate system.</li>
+    <li><b>Warping:</b> The center image remains unchanged, while the side image is transformed using
+        bilinear inverse warping. The warping function also returns the offset of the
+        warped image's top-left corner.</li>
+    <li><b>Canvas size:</b> The smallest canvas that fits both the center image at (0, 0) and the
+        warped side image at its offset is calculated using the minimum and maximum coordinates
+        of their edges.</li>
+    <li><b>Weights:</b> Each image is assigned a weight map with a value of 1 at the center that
+        decreases linearly to 0 at the edges. The side image's weight map is warped using the
+        same H to keep the weights aligned with the image pixels.</li>
+    <li><b>Blending:</b> Instead of having one image overwrite the other and create a visible seam,
+        weighted averaging is used to combine the images. For each pixel on the canvas, the
+        pixel colors are multiplied by their corresponding weights and added together. The result
+        is divided by the sum of the weights. In overlapping regions, pixels closer to the center
+        of an image receive more weight, creating a smoother transition. Regions covered by only
+        one image retain that image's color, while uncovered pixels remain black.</li>
+    </ol>
+<pre>
+mosaic = (color₁·w₁ + color₂·w₂) / (w₁ + w₂)
+</pre>
+
+  <h3>Mosaic 1: Downtown</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_4/mosaic_3_downtown.jpg" alt="Downtown sources and mosaic">
+      <p>Side, center, and mosaic</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_4/mosaic_downtown.jpg" alt="Downtown mosaic">
+      <p>Downtown mosaic</p>
+    </div>
+  </div>
+
+  <h3>Mosaic 2: Sodoi</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_4/mosaic_3_sodoi.jpg" alt="Sodoi sources and mosaic">
+      <p>Side, center, and mosaic</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_4/mosaic_sodoi.jpg" alt="Sodoi mosaic">
+      <p>Sodoi mosaic</p>
+    </div>
+  </div>
+
+  <h3>Mosaic 3: Library</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_4/mosaic_3_library.jpg" alt="Library sources and mosaic">
+      <p>Side, center, and mosaic</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/a_4/mosaic_library.jpg" alt="Library mosaic">
+      <p>Library mosaic</p>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>
