@@ -531,5 +531,183 @@ mosaic = (color₁·w₁ + color₂·w₂) / (w₁ + w₂)
 </div>
 
 </div>
+
+<h1>Part B: Feature Matching for Autostitching</h1>
+
+<div class="intro">
+  <p>
+    This section of the project is creating a system that automatically stitches images into a mosaic,
+    following the research paper
+    <a href="https://cal-cs180.github.io/fa26/hw/proj3/Papers/MOPS.pdf">“Multi-Image Matching using Multi-Scale Oriented Patches” by Brown et al.</a>
+    In part A, the corresponding points were clicked by hand, but part B will do this automatically and RANSAC will be used to compute a robust homography. 
+  </p>
+</div>
+
+<div class="section">
+  <h2>B.1: Detecting Corner Features in an Image</h2>
+  <p>
+    In this section we look for spots in the image where the intensity changes in two directions, which
+    are corners. I did this by converting it into grayscale and downsizing it by a factor of 4. Then I used a provided Harris corner function to detect
+    the corners. The function discards corners within 20 pixels of the edge so there is a small border around the image.
+  </p>
+  <p>
+    Harris finds a very large number of corners, so I kept the 5,000 strongest. Even with just choosing the 5,000 strongest, there are so
+    many points that it is hard to see the features/corners. 
+  </p>
+
+  <h3>Adaptive Non-Maximal Suppression (ANMS)</h3>
+  <p>
+    ANMS picks a smaller set of corners that are both strong and spread out across the image. Each corner
+    gets a radius, which is the distance to the nearest corner that is clearly stronger than it.
+  </p>
+<pre>
+r_i = min |x_i - x_j|,  where  f(x_i) &lt; c_robust · f(x_j)
+</pre>
+  <p>
+    I used c_robust = 0.9, so a corner is only suppressed by a neighbor that is at least about 10%
+    stronger, and kept the 500 corners with the largest radii, as in the paper. With ANMS we have
+    much less points, allowing us to see the exact points/features we are trying to follow.
+  </p>
+
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_1/harris_downtown.jpg" alt="Harris corners">
+      <p>Harris corners (5,000 strongest)</p>
+    </div>
+    <div class="image-container">
+      <img src="images/b_1/anms_downtown.jpg" alt="ANMS corners">
+      <p>After ANMS (500 corners)</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>B.2: Extracting a Feature Descriptor for Each Feature Point</h2>
+  <p>
+    In this section we extract a descriptor for each feature point, which describes what the area around
+    the corner looks like. For each ANMS corner we found, I took a 40 x 40 window centered on it and split it
+    into an 8 x 8 grid of 5 x 5 blocks. Then each block would blur the patch and samples it every 5 pixels giving an axis aligned 8 x 8 
+    descriptor. Then I normalized each descriptor so its mean is 0 and standard deviation is 1. Each descriptor is flattened into 64 values for matching.
+  </p>
+
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_2/descriptors_downtown.jpg" alt="Feature descriptors">
+      <p>Top: 40 x 40 windows. Bottom: their normalized 8 x 8 descriptors.</p>
+    </div>
+  </div>
+  <p>
+    In this image we can see that there are two features that almost look alike, but are slightly
+    different. By looking at the satellite dish, we can see the window has been shifted. This happens because ANMS only 
+    suppresses a corner when a neighbor is at least 10% stronger, so two nearby corners with almost the same strength are both kept.
+  </p>
+</div>
+
+<div class="section">
+  <h2>B.3: Matching Feature Descriptors Between Two Images</h2>
+  <p>
+    To match features, I computed the squared distance between every descriptor in one image and every
+    descriptor in the other. For each feature in the first image, I found its closest and second
+    closest descriptor in the second image, and only kept the match if
+  </p>
+<pre>
+e_1-NN / e_2-NN &lt; 0.6
+</pre>
+
+  <h3>Downtown</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_3/matches_downtown.jpg" alt="Downtown matches">
+      <p>Matched features</p>
+    </div>
+  </div>
+
+  <h3>Sodoi</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_3/matches_sd.jpg" alt="Sodoi matches">
+      <p>Matched features</p>
+    </div>
+  </div>
+
+  <h3>Library</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_3/matches_library.jpg" alt="Library matches">
+      <p>Matched features</p>
+    </div>
+  </div>
+
+  <p>
+    We can look at the feature descriptors and see the connections between the two perspectives. Most of
+    the lines are parallel and connect to the same feature. However, some lines cross over to the
+    incorrect features. This is because those features have similar corner styles, so their descriptors
+    look alike even though they are different points in the scene.
+  </p>
+</div>
+
+<div class="section">
+  <h2>B.4: Using RANSAC to Compute and Apply Homographies</h2>
+  <p>
+    In section we will use 4-point RANSAC:
+  </p>
+  <ol>
+    <li>Select 4 matched pairs at random.</li>
+    <li>Compute the homography H from those 4 pairs.</li>
+    <li>Apply H to every matched point in the first image and measure the distance to its match in the
+        second image. Matches within 2 pixels are inliers.</li>
+    <li>Repeat 1,000 times, keeping the H with the most inliers.</li>
+    <li>Recompute H using all of the inliers from the best H.</li>
+  </ol>
+  <p>
+    After RANSAC, we can see that there are better line connections between the different features, since
+    the matches that do not agree with the homography are removed. We use this new homography to create the mosaic
+    where we use the same weighted-averaging code from part A. We have the center image fixed and we warp the side image to match the center.
+  </p>
+
+  <h3>Mosaic 1: Downtown</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_4/inliers_downtown.jpg" alt="Downtown RANSAC inliers">
+      <p>RANSAC inliers</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_4/compare_downtown.jpg" alt="Downtown manual vs automatic">
+      <p>Manual (Part A) vs. automatic (RANSAC)</p>
+    </div>
+  </div>
+
+  <h3>Mosaic 2: Sodoi</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_4/inliers_sd.jpg" alt="Sodoi RANSAC inliers">
+      <p>RANSAC inliers</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_4/compare_sd.jpg" alt="Sodoi manual vs automatic">
+      <p>Manual (Part A) vs. automatic (RANSAC)</p>
+    </div>
+  </div>
+
+  <h3>Mosaic 3: Library</h3>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_4/inliers_library.jpg" alt="Library RANSAC inliers">
+      <p>RANSAC inliers</p>
+    </div>
+  </div>
+  <div class="images">
+    <div class="image-container">
+      <img src="images/b_4/compare_lib.jpg" alt="Library manual vs automatic">
+      <p>Manual (Part A) vs. automatic (RANSAC)</p>
+    </div>
+  </div>
+  <p>The automatic looks very simliar to the manual, showcasing that the automatic was able to gind good corresponding points/features to create the mosiac based on.</p>
+
+</div>
 </body>
 </html>
